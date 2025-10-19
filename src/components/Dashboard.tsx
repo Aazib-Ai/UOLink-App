@@ -668,7 +668,6 @@ function Dashboard() {
       }
 
       setNotes((prevNotes) => prevNotes.filter((note) => note.id !== noteToDelete.id))
-      setTotalNotesCount((prevCount) => Math.max(0, prevCount - 1))
       console.log(`Note with ID: ${noteToDelete.id} has been deleted successfully.`)
 
       setIsDeleteModalOpen(false)
