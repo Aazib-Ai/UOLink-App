@@ -368,7 +368,7 @@ function Dashboard() {
       return null;
     }
 
-    const cachedImage = profilePictures[contributorName] || null;
+    const cachedImage = profilePictures[contributorName] ?? null;
 
     try {
       const profile = await getUserProfileByName(contributorName);
@@ -396,7 +396,7 @@ function Dashboard() {
         if (profile.profilePicture && profile.profilePicture !== cachedImage) {
           setProfilePictures(prev => ({
             ...prev,
-            [contributorName]: profile.profilePicture
+            [contributorName]: profile.profilePicture ?? undefined
           }));
           return profile.profilePicture;
         }
