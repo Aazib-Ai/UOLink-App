@@ -24,6 +24,21 @@ import {
 } from 'firebase/firestore';
 import type { DocumentData, QueryDocumentSnapshot, Transaction } from 'firebase/firestore';
 
+export interface CommentRecord {
+    id: string;
+    text: string;
+    userId: string;
+    userEmail: string;
+    userPhotoURL?: string;
+    userName?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    likes: number;
+    replyCount: number;
+}
+
+export type CommentReplyRecord = Omit<CommentRecord, 'replyCount'>;
+
 export interface UserProfile {
     id: string;
     fullName?: string;
@@ -806,16 +821,30 @@ const addComment = async (noteId: string, commentData: any) => {
     }
 };
 
-const mapCommentDocument = (snapshot: QueryDocumentSnapshot<DocumentData>) => {
-    const data = snapshot.data();
+const readString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
+const readNumber = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const mapCommentDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): CommentRecord => {
+    const data = snapshot.data() ?? {};
+
+    const text = readString((data as Record<string, unknown>).text) ?? '';
+    const userId = readString((data as Record<string, unknown>).userId) ?? '';
+    const userEmail = readString((data as Record<string, unknown>).userEmail) ?? '';
 
     return {
         id: snapshot.id,
-        ...data,
-        likes: data.likes ?? 0,
-        replyCount: data.replyCount ?? 0,
-        createdAt: data.createdAt?.toDate?.() ?? new Date(),
-        updatedAt: data.updatedAt?.toDate?.() ?? new Date(),
+        text,
+        userId,
+        userEmail,
+        userPhotoURL: readString((data as Record<string, unknown>).userPhotoURL),
+        userName: readString((data as Record<string, unknown>).userName),
+        likes: readNumber((data as Record<string, unknown>).likes) ?? 0,
+        replyCount: readNumber((data as Record<string, unknown>).replyCount) ?? 0,
+        createdAt: (data as Record<string, any>).createdAt?.toDate?.() ?? new Date(),
+        updatedAt: (data as Record<string, any>).updatedAt?.toDate?.() ?? new Date(),
     };
 };
 
@@ -823,7 +852,11 @@ const fetchCommentsPage = async (
     noteId: string,
     pageSize = 15,
     cursor?: QueryDocumentSnapshot<DocumentData> | null
-) => {
+): Promise<{
+    comments: CommentRecord[];
+    lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+    hasMore: boolean;
+}> => {
     const commentsCollection = collection(db, 'notes', noteId, 'comments');
 
     const constraints = cursor
@@ -843,18 +876,13 @@ const fetchCommentsPage = async (
     };
 };
 
-const getComments = (noteId: string, callback: (comments: any[]) => void) => {
+const getComments = (noteId: string, callback: (comments: CommentRecord[]) => void) => {
     try {
         const commentsCollection = collection(db, 'notes', noteId, 'comments');
         const q = query(commentsCollection, orderBy('createdAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const comments = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate() || new Date(),
-                updatedAt: doc.data().updatedAt?.toDate() || new Date()
-            }));
+            const comments = querySnapshot.docs.map(mapCommentDocument);
             callback(comments);
         });
 
@@ -1076,19 +1104,27 @@ const getReportStatus = async (noteId: string) => {
     }
 };
 
-const mapReplyDocument = (snapshot: QueryDocumentSnapshot<DocumentData>) => {
-    const data = snapshot.data();
+const mapReplyDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): CommentReplyRecord => {
+    const data = snapshot.data() ?? {};
+
+    const text = readString((data as Record<string, unknown>).text) ?? '';
+    const userId = readString((data as Record<string, unknown>).userId) ?? '';
+    const userEmail = readString((data as Record<string, unknown>).userEmail) ?? '';
 
     return {
         id: snapshot.id,
-        ...data,
-        likes: data.likes ?? 0,
-        createdAt: data.createdAt?.toDate?.() ?? new Date(),
-        updatedAt: data.updatedAt?.toDate?.() ?? new Date(),
+        text,
+        userId,
+        userEmail,
+        userPhotoURL: readString((data as Record<string, unknown>).userPhotoURL),
+        userName: readString((data as Record<string, unknown>).userName),
+        likes: readNumber((data as Record<string, unknown>).likes) ?? 0,
+        createdAt: (data as Record<string, any>).createdAt?.toDate?.() ?? new Date(),
+        updatedAt: (data as Record<string, any>).updatedAt?.toDate?.() ?? new Date(),
     };
 };
 
-const fetchReplies = async (noteId: string, commentId: string, limitCount = 50) => {
+const fetchReplies = async (noteId: string, commentId: string, limitCount = 50): Promise<CommentReplyRecord[]> => {
     const repliesCollection = collection(db, 'notes', noteId, 'comments', commentId, 'replies');
     const repliesQuery = query(repliesCollection, orderBy('createdAt', 'asc'), limit(limitCount));
     const snapshot = await getDocs(repliesQuery);
