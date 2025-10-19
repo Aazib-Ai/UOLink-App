@@ -99,7 +99,7 @@ function Dashboard() {
   const router = useRouter()
   const [savingNotes, setSavingNotes] = useState(false)
   const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>({})
-  const [profilePictures, setProfilePictures] = useState<Record<string, string>>({})
+  const [profilePictures, setProfilePictures] = useState<Record<string, string | undefined>>({})
   const [profileSlugs, setProfileSlugs] = useState<Record<string, string>>({})
   const [profileAura, setProfileAura] = useState<Record<string, { aura: number; tierName: string; badgeClass: string; borderClass: string }>>({})
 
