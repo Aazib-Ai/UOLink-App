@@ -24,6 +24,28 @@ import {
 } from 'firebase/firestore';
 import type { DocumentData, QueryDocumentSnapshot, Transaction } from 'firebase/firestore';
 
+export interface UserProfile {
+    id: string;
+    fullName?: string;
+    major?: string;
+    semester?: string | number;
+    section?: string;
+    bio?: string;
+    about?: string;
+    skills?: string[];
+    githubUrl?: string;
+    linkedinUrl?: string;
+    instagramUrl?: string;
+    facebookUrl?: string;
+    profilePicture?: string | null;
+    profilePictureStorageKey?: string | null;
+    profileCompleted?: boolean;
+    profileSlug?: string;
+    fullNameLower?: string;
+    aura?: number;
+    [key: string]: unknown;
+}
+
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
@@ -1099,7 +1121,7 @@ const getAuraLeaderboard = async (limitCount = 20) => {
     }
 };
 
-const getUserProfile = async (userId: string) => {
+const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
         const profileRef = doc(db, 'profiles', userId);
         const profileSnap = await getDoc(profileRef);
@@ -1108,7 +1130,7 @@ const getUserProfile = async (userId: string) => {
             return {
                 id: profileSnap.id,
                 ...profileSnap.data()
-            };
+            } as UserProfile;
         }
         return null;
     } catch (error) {
@@ -1117,7 +1139,7 @@ const getUserProfile = async (userId: string) => {
     }
 };
 
-const getUserProfileByName = async (identifier: string) => {
+const getUserProfileByName = async (identifier: string): Promise<UserProfile | null> => {
     try {
         const normalizedInput = (identifier ?? '').trim();
         if (!normalizedInput) {
@@ -1126,14 +1148,14 @@ const getUserProfileByName = async (identifier: string) => {
 
         const profilesCollection = collection(db, 'profiles');
 
-        const pickProfile = (profileSnap: QueryDocumentSnapshot<DocumentData> | null) => {
+        const pickProfile = (profileSnap: QueryDocumentSnapshot<DocumentData> | null): UserProfile | null => {
             if (!profileSnap) {
                 return null;
             }
             return {
                 id: profileSnap.id,
                 ...profileSnap.data()
-            };
+            } as UserProfile;
         };
 
         const slugCandidate = slugify(normalizedInput);
