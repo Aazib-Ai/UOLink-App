@@ -85,19 +85,25 @@ export default function UploadPage() {
           fullName = localPart
         }
 
-        const profileSemester = (profile as Record<string, unknown>)?.semester || ''
-        const detectedSemester =
-          typeof profileSemester === 'string' && profileSemester.includes('Semester')
-            ? profileSemester.replace('Semester ', '').trim()
-            : typeof profileSemester === 'number' && Number.isFinite(profileSemester)
-            ? String(profileSemester)
-            : profileSemester
+        const profileRecord = (profile ?? {}) as Record<string, unknown>
+        const profileMajor = typeof profileRecord?.major === 'string' ? profileRecord.major : ''
+        const profileSemesterRaw = profileRecord?.semester
+        const profileSection = typeof profileRecord?.section === 'string' ? profileRecord.section : ''
+
+        let detectedSemester = ''
+        if (typeof profileSemesterRaw === 'string') {
+          detectedSemester = profileSemesterRaw.includes('Semester')
+            ? profileSemesterRaw.replace('Semester ', '').trim()
+            : profileSemesterRaw
+        } else if (typeof profileSemesterRaw === 'number' && Number.isFinite(profileSemesterRaw)) {
+          detectedSemester = String(profileSemesterRaw)
+        }
 
         const newProfileData = {
           fullName,
-          major: (profile as Record<string, unknown>)?.major || '',
+          major: profileMajor,
           semester: detectedSemester,
-          section: (profile as Record<string, unknown>)?.section || ''
+          section: profileSection
         }
 
         setProfileData(newProfileData)
