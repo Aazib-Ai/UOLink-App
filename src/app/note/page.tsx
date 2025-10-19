@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import PDFViewer from '@/components/PDFViewer'
@@ -105,7 +105,28 @@ const getVibeBadge = (score: number): { icon: JSX.Element | null; classes: strin
   }
 }
 
+function NotePageFallback() {
+  return (
+    <>
+      <Navbar />
+      <main className="min-h-screen bg-[#f6f9ee]">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-center px-4 py-20 sm:px-6 lg:px-8">
+          <div className="text-sm font-medium text-[#4c5c3c]">Loading note...</div>
+        </div>
+      </main>
+    </>
+  )
+}
+
 export default function NotePage() {
+  return (
+    <Suspense fallback={<NotePageFallback />}>
+      <NotePageContent />
+    </Suspense>
+  )
+}
+
+function NotePageContent() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const [noteData, setNoteData] = useState<any>(null)

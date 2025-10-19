@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { ExternalLink, LogIn, Maximize2, RefreshCw, Shield } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -156,14 +156,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
 
   const [downloading, setDownloading] = useState(false)
 
-  const handleDownload = useCallback(async (buttonElement?: HTMLButtonElement) => {
+  const handleDownload = useCallback(async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
     if (!url || downloading) return
+
+    let filename = ''
 
     try {
       setDownloading(true)
 
       // Try to create a meaningful filename from the title or URL
-      let filename = ''
       if (title) {
         // Clean the title to make it a valid filename
         filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase()

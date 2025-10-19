@@ -63,13 +63,14 @@ export default function DocumentScanner() {
   };
 
   useEffect(() => {
-    let stopDetection: (() => void) | null = null;
+    let stopDetection: (() => void) | undefined;
 
     if (isScanning && detector && videoRef.current) {
-      stopDetection = detector.detectDocumentLive(videoRef.current, (detectedCorners) => {
+      const stopFn = detector.detectDocumentLive(videoRef.current, (detectedCorners: Corner[] | null) => {
         setCorners(detectedCorners);
         drawOverlay(detectedCorners);
       });
+      stopDetection = stopFn ?? undefined;
     }
 
     return () => {

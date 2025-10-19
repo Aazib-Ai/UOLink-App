@@ -550,8 +550,11 @@ export function ScannerModal({ isOpen, onClose, onComplete }: ScannerModalProps)
       return
     }
 
+    const constraintSet: MediaTrackConstraintSet & { advanced?: Array<Record<string, unknown>> } = {}
+    constraintSet.advanced = [{ torch: !isTorchEnabled }]
+
     try {
-      await track.applyConstraints({ advanced: [{ torch: !isTorchEnabled }] })
+      await track.applyConstraints(constraintSet)
       setIsTorchEnabled((previous) => !previous)
     } catch (error) {
       console.warn('[ScannerModal] Torch toggle failed', error)
@@ -617,7 +620,7 @@ export function ScannerModal({ isOpen, onClose, onComplete }: ScannerModalProps)
             wasAutoProcessed: result.detectedCorners !== null,
             confidence: result.confidence,
             processingTime: result.processingTime,
-            detectedCorners: result.detectedCorners
+            detectedCorners: result.detectedCorners ?? undefined
           }
         } else {
           processedResult = pendingCapture

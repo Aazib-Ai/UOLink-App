@@ -256,7 +256,8 @@ const mapNoteSnapshot = (doc: QueryDocumentSnapshot<DocumentData>) => {
 const addNote = async (noteData: any) => {
     try {
         // Validate input
-        if (!auth.currentUser) {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
             throw new Error('User must be authenticated to add a note');
         }
 
@@ -269,7 +270,7 @@ const addNote = async (noteData: any) => {
         const noteRef = doc(notesCollection);
         const timestamp = serverTimestamp();
         const metadataCreatedAt = new Date().toISOString();
-        const uploaderId = auth.currentUser.uid;
+        const uploaderId = currentUser.uid;
         const normalizedTeacher = normalizeForStorage(noteData.teacher || noteData.module || '');
 
         await runTransaction(db, async (transaction) => {
@@ -289,7 +290,7 @@ const addNote = async (noteData: any) => {
                 vibeUpdatedAt: timestamp,
                 lastInteractionAt: timestamp,
                 metadata: {
-                    createdBy: auth.currentUser.email, // Optional: add email for reference
+                    createdBy: currentUser.email ?? null, // Optional: add email for reference
                     createdAt: metadataCreatedAt
                 }
             });
@@ -1021,8 +1022,10 @@ const reportContent = async (noteId: string, reason: string, description?: strin
         throw new Error('User must be authenticated to report content');
     }
 
+    const currentUser = auth.currentUser;
+
     try {
-        const reportRef = doc(db, 'reports', `${noteId}_${auth.currentUser.uid}`);
+        const reportRef = doc(db, 'reports', `${noteId}_${currentUser.uid}`);
         const noteRef = doc(db, 'notes', noteId);
 
         await runTransaction(db, async (transaction) => {
@@ -1049,8 +1052,8 @@ const reportContent = async (noteId: string, reason: string, description?: strin
             // Create report record
             transaction.set(reportRef, {
                 noteId,
-                userId: auth.currentUser.uid,
-                userEmail: auth.currentUser.email,
+                userId: currentUser.uid,
+                userEmail: currentUser.email ?? null,
                 reason,
                 description: description?.trim() || null,
                 status: 'pending',

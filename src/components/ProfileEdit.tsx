@@ -228,6 +228,11 @@ export default function ProfileEdit() {
     const file = event.target.files?.[0]
     if (!file) return
 
+    if (!user?.uid) {
+      setError('You must be signed in to update your profile picture.')
+      return
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       setError('Image size should be less than 5MB')
       return
@@ -253,7 +258,7 @@ export default function ProfileEdit() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const token = await user?.getIdToken()
+      const token = await user.getIdToken()
       const response = await fetch('/api/profile-picture', {
         method: 'POST',
         headers: {

@@ -61,7 +61,7 @@ interface Point {
   y: number
 }
 
-interface ProcessingOptions {
+export interface ProcessingOptions {
   blurKernel?: number
   gaussianKernel?: number
   cannyLower?: number

@@ -202,19 +202,23 @@ export default function UploadModal({ isOpen, onClose, onScanRequest, scannedFil
           fullName = localPart
         }
 
-        const profileSemester = (profile as Record<string, unknown>)?.semester || ''
-        const detectedSemester =
-          typeof profileSemester === 'string' && profileSemester.includes('Semester')
-            ? profileSemester.replace('Semester ', '').trim()
-            : typeof profileSemester === 'number' && Number.isFinite(profileSemester)
-            ? String(profileSemester)
-            : profileSemester
+        const record = (profile ?? {}) as Record<string, unknown>
 
-        const newProfileData = {
+        const profileSemester = record.semester
+        let detectedSemester = ''
+        if (typeof profileSemester === 'string') {
+          detectedSemester = profileSemester.includes('Semester')
+            ? profileSemester.replace('Semester ', '').trim()
+            : profileSemester
+        } else if (typeof profileSemester === 'number' && Number.isFinite(profileSemester)) {
+          detectedSemester = String(profileSemester)
+        }
+
+        const newProfileData: ProfileData = {
           fullName,
-          major: (profile as Record<string, unknown>)?.major || '',
+          major: typeof record.major === 'string' ? record.major : '',
           semester: detectedSemester,
-          section: (profile as Record<string, unknown>)?.section || ''
+          section: typeof record.section === 'string' ? record.section : ''
         }
 
         setProfileData(newProfileData)

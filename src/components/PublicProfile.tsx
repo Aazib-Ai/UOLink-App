@@ -95,10 +95,32 @@ export default function PublicProfile() {
                     return
                 }
 
-                setProfile(profileData)
+                const normalizedProfile: ProfileData = {
+                    id: profileData.id,
+                    fullName: profileData.fullName ?? decodedUserName,
+                    fullNameLower: profileData.fullNameLower ?? profileData.fullName?.toLowerCase() ?? decodedUserName.toLowerCase(),
+                    profileSlug: profileData.profileSlug,
+                    major: profileData.major ?? '',
+                    semester: typeof profileData.semester === 'string' ? profileData.semester : profileData.semester ? String(profileData.semester) : '',
+                    section: profileData.section ?? '',
+                    bio: profileData.bio ?? '',
+                    about: profileData.about ?? '',
+                    skills: Array.isArray(profileData.skills) ? profileData.skills : [],
+                    githubUrl: profileData.githubUrl ?? '',
+                    linkedinUrl: profileData.linkedinUrl ?? '',
+                    instagramUrl: profileData.instagramUrl ?? '',
+                    facebookUrl: profileData.facebookUrl ?? '',
+                    profilePicture: profileData.profilePicture ?? null,
+                    profileCompleted: Boolean(profileData.profileCompleted),
+                    aura: profileData.aura,
+                    createdAt: profileData.createdAt,
+                    updatedAt: profileData.updatedAt,
+                }
+
+                setProfile(normalizedProfile)
 
                 const notesResult = await getAllNotesWithFilters({
-                    contributorName: profileData.fullName,
+                    contributorName: normalizedProfile.fullName,
                     uploadedBy: profileData.id,
                 })
 
