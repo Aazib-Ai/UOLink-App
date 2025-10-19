@@ -9,6 +9,7 @@ interface CustomSelectProps {
   onChange: (option: string) => void;
   value?: string;
   disabled?: boolean;
+  className?: string;
 }
 
 type DropdownPosition = {
@@ -22,7 +23,14 @@ const MIN_VISIBLE_HEIGHT = 180;
 const VIEWPORT_MARGIN = 12;
 const PANEL_GAP = 8;
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ options, placeholder, onChange, value, disabled = false }) => {
+const CustomSelect: React.FC<CustomSelectProps> = ({
+  options,
+  placeholder,
+  onChange,
+  value,
+  disabled = false,
+  className = ''
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredOptions, setFilteredOptions] = useState<string[]>(options);
@@ -149,7 +157,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ options, placeholder, onCha
       <div
         className={`border ${isOpen ? 'border-[#90c639] bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'} transition-all duration-200 rounded-xl p-4 bg-white shadow-md ${
           disabled ? 'cursor-not-allowed opacity-60 hover:bg-white hover:border-gray-300' : 'cursor-pointer'
-        }`}
+        } ${className}`}
         ref={triggerRef}
         onClick={() => {
           if (disabled) {
