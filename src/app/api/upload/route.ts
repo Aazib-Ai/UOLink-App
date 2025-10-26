@@ -5,6 +5,11 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { getR2BucketName, getR2Client, buildR2PublicUrl } from '@/lib/r2'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { randomUUID } from 'crypto'
+import {
+  resolveUploadDescriptorByExtension,
+  resolveUploadDescriptorByMime,
+  getSupportedFileTypeSummary,
+} from '@/constants/uploadFileTypes'
 
 export const runtime = 'nodejs'
 
@@ -37,9 +42,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file received.' }, { status: 400 })
     }
 
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files are supported.' }, { status: 400 })
+    const originalFileName = (file.name || '').trim()
+    const providedExtension =
+      originalFileName && originalFileName.includes('.')
+        ? (originalFileName.split('.').pop() ?? '').toLowerCase()
+        : ''
+    const mimeMatch = file.type ? resolveUploadDescriptorByMime(file.type) : undefined
+    const extensionMatch = providedExtension ? resolveUploadDescriptorByExtension(providedExtension) : undefined
+
+    if (!mimeMatch && !extensionMatch) {
+      const summary = getSupportedFileTypeSummary()
+      return NextResponse.json(
+        {
+          error: summary ? `Only ${summary} are supported.` : 'Unsupported file type.',
+        },
+        { status: 400 }
+      )
     }
+
+    const resolvedExtension = extensionMatch?.extension ?? mimeMatch?.extension ?? 'pdf'
+    const normalizedContentType =
+      file.type || mimeMatch?.mimeTypes[0] || extensionMatch?.mimeTypes[0] || 'application/octet-stream'
 
     const MAX_FILE_BYTES = 25 * 1024 * 1024
     if (file.size > MAX_FILE_BYTES) {
@@ -107,15 +130,27 @@ export async function POST(request: NextRequest) {
     const teacherSlug = slugify(teacher)
 
     const uniqueSuffix = `${Date.now()}-${randomUUID()}`
-    const sanitizedOriginalName = slugify(file.name.replace(/\.pdf$/i, '')) || slugify(name)
-    const objectKey = `${semesterSlug}/${subjectSlug}/${teacherSlug}/${sanitizedOriginalName}-${uniqueSuffix}.pdf`
+    const baseNameSource = originalFileName || name || `${subject}-${teacher}`
+    const sanitizedOriginalName = slugify(baseNameSource.replace(/\.[^/.]+$/, '')) || slugify(name)
+    const objectKey = `${semesterSlug}/${subjectSlug}/${teacherSlug}/${sanitizedOriginalName}-${uniqueSuffix}.${resolvedExtension}`
+
+    const profileRef = db.collection('profiles').doc(decoded.uid)
+    const profileSnapshot = await profileRef.get()
+    const profileData = profileSnapshot.exists ? profileSnapshot.data() ?? {} : {}
+    const profileFullName =
+      typeof profileData.fullName === 'string' ? profileData.fullName.trim() : ''
+    const profileUsername =
+      typeof profileData.username === 'string' ? profileData.username.trim() : ''
+    const contributorDisplayName =
+      profileFullName || contributorName || decoded.name || decoded.email?.split('@')[0] || 'Anonymous'
+    const uploaderUsername = profileUsername || null
 
     await r2Client.send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: objectKey,
         Body: fileBuffer,
-        ContentType: file.type,
+        ContentType: normalizedContentType,
         ContentLength: file.size,
         Metadata: {
           uploadedBy: decoded.uid,
@@ -135,14 +170,17 @@ export async function POST(request: NextRequest) {
       section: sectionRaw,
       materialType: materialTypeRaw,
       materialSequence: requiresSequence ? materialSequenceRaw : null,
-      contributorName,
+      contributorName: contributorDisplayName,
+      contributorDisplayName,
+      uploaderUsername,
       contributorMajor: contributorMajor || '',
       fileUrl,
       storageProvider: 'cloudflare-r2',
       storageBucket: bucket,
       storageKey: objectKey,
       fileSize: file.size,
-      contentType: file.type,
+      contentType: normalizedContentType,
+      fileExtension: resolvedExtension,
       originalFileName: file.name,
       uploadedBy: decoded.uid,
       uploadedAt: FieldValue.serverTimestamp(),

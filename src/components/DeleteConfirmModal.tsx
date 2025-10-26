@@ -87,7 +87,7 @@ export default function DeleteConfirmModal({
           <div className="mb-6">
             <h3 className="font-semibold text-gray-900 mb-2">This will permanently delete:</h3>
             <ul className="text-sm text-gray-600 space-y-1">
-              <li>• The PDF file from storage</li>
+              <li>• The stored document file</li>
               <li>• All associated metadata</li>
               <li>• Any comments and interactions</li>
               <li>• Download history and statistics</li>

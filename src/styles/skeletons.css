@@ -1,0 +1,101 @@
+/* Skeleton loading animations with smooth transitions */
+
+.skeleton-fade-in {
+  animation: skeletonFadeIn 0.3s ease-in-out;
+}
+
+.skeleton-fade-out {
+  animation: skeletonFadeOut 0.3s ease-in-out;
+}
+
+@keyframes skeletonFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes skeletonFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* Enhanced skeleton shimmer effect */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Mobile-optimized skeleton animations */
+@media (max-width: 768px) {
+  .skeleton-fade-in,
+  .skeleton-fade-out {
+    animation-duration: 0.2s;
+  }
+  
+  .skeleton-shimmer {
+    animation-duration: 1.2s;
+  }
+  
+  /* Reduce skeleton complexity on mobile for better performance */
+  .skeleton-mobile-simple {
+    background: #f0f0f0;
+    animation: none;
+  }
+  
+  /* Optimize touch targets for mobile */
+  .skeleton-touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Smooth content transitions */
+.content-fade-in {
+  animation: contentFadeIn 0.4s ease-out;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Skeleton pulse animation for better mobile performance */
+.skeleton-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

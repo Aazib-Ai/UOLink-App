@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExternalLink, LogIn, Maximize2, RefreshCw, Shield } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import PWADownloadButton from './PWADownloadButton'
 
 interface PDFViewerProps {
   url: string
@@ -154,81 +155,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
     }
   }, [isMobile, retryCount])
 
-  const [downloading, setDownloading] = useState(false)
 
-  const handleDownload = useCallback(async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    if (!url || downloading) return
-
-    let filename = ''
-
-    try {
-      setDownloading(true)
-
-      // Try to create a meaningful filename from the title or URL
-      if (title) {
-        // Clean the title to make it a valid filename
-        filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase()
-        if (!filename.endsWith('.pdf')) {
-          filename += '.pdf'
-        }
-      } else {
-        // Extract filename from URL
-        const urlFilename = url.split('/').pop()?.split('?')[0]
-        if (urlFilename && urlFilename.includes('.')) {
-          filename = urlFilename
-        }
-      }
-
-      // Default filename if none could be determined
-      if (!filename) {
-        filename = 'document.pdf'
-      }
-
-      // Add CORS headers to the request if possible
-      const response = await fetch(url, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-cache'
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.statusText}`)
-      }
-
-      const blob = await response.blob()
-      const blobUrl = window.URL.createObjectURL(blob)
-
-      // Create a temporary anchor element to trigger download
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = filename
-      link.style.display = 'none'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      // Clean up the blob URL
-      window.URL.revokeObjectURL(blobUrl)
-
-    } catch (error) {
-      console.error('Download failed:', error)
-
-      // Fallback: Create a download link with download attribute
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename || 'document.pdf'
-      link.target = '_blank'
-      link.rel = 'noopener noreferrer'
-      link.style.display = 'none'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-    } finally {
-      setDownloading(false)
-    }
-  }, [url, title, downloading])
 
   const inlineUrl = useMemo(() => {
     if (!url) {
@@ -275,25 +202,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
           <div className="flex items-center gap-1.5 sm:gap-2">
             {isAuthenticated ? (
               <>
-                <button
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 active:scale-95 touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed sm:px-4 sm:py-2 sm:text-sm"
-                >
-                  <svg className={`h-3 w-3 sm:h-4 sm:w-4 ${downloading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {downloading ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    )}
-                  </svg>
-                  <span className="hidden sm:inline">
-                    {downloading ? 'Downloading...' : 'Download'}
-                  </span>
-                  <span className="sm:hidden">
-                    {downloading ? 'Downloading...' : 'Download'}
-                  </span>
-                </button>
+                <PWADownloadButton
+                  url={url}
+                  title={title}
+                />
                 <a
                   href={url}
                   target="_blank"

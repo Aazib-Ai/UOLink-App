@@ -16,6 +16,7 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
+  sendEmailVerification,
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 
@@ -31,6 +32,7 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>
   authenticateWithEmail: (email: string, password: string, mode: AuthMode) => Promise<void>
   signOut: () => Promise<void>
+  sendVerificationEmail: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -71,7 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         return
       }
-      setUser(currentUser)
+      // Only set user to null and stop loading if we're sure there's no user
+      // This prevents the flash of signed-out state during page reloads
+      setUser(null)
       setLoading(false)
     })
 
@@ -101,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mode === 'register') {
         const { user: createdUser } = await createUserWithEmailAndPassword(auth, email, password)
         ensureAllowedEmail(createdUser.email)
+        await sendEmailVerification(createdUser)
         setUser(createdUser)
       } else {
         const { user: loggedInUser } = await signInWithEmailAndPassword(auth, email, password)
@@ -118,6 +123,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  const sendVerificationEmail = async () => {
+    try {
+      setError(null)
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        throw new Error('You must be signed in to request a verification email.')
+      }
+      await sendEmailVerification(currentUser)
+    } catch (err) {
+      setError(sanitizeError(err))
+      throw err
+    }
+  }
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -127,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       authenticateWithEmail,
       signOut,
+      sendVerificationEmail,
     }),
     [user, loading, error]
   )

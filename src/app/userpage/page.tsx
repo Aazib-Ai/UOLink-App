@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
-import { User, Edit3, Upload, BookOpen, Settings } from 'lucide-react'
-import UploadModal from '@/components/UploadModal'
+import { User, Edit3, Upload, BookOpen, Settings, Zap } from 'lucide-react'
+import UploadModalLazy from '@/components/UploadModalLazy'
 
 export default function UserPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -26,7 +26,7 @@ export default function UserPage() {
               </div>
 
               {/* Quick Actions */}
-              <div className="grid md:grid-cols-2 gap-4 mb-8">
+              <div className="grid md:grid-cols-3 gap-4 mb-8">
                 <Link href="/profile-edit" className="group">
                   <div className="bg-gradient-to-br from-[#90c639] to-[#7ab332] p-6 rounded-xl text-white hover:shadow-lg transition-all duration-200 group-hover:scale-105">
                     <div className="flex items-center justify-between mb-3">
@@ -35,6 +35,17 @@ export default function UserPage() {
                     </div>
                     <h3 className="text-xl font-bold mb-2">Edit Profile</h3>
                     <p className="text-sm opacity-90">Update your information, skills, and social links</p>
+                  </div>
+                </Link>
+
+                <Link href="/aura" className="group">
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-xl text-white hover:shadow-lg transition-all duration-200 group-hover:scale-105">
+                    <div className="flex items-center justify-between mb-3">
+                      <Zap className="w-8 h-8" />
+                      <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Stats</span>
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">Aura Dashboard</h3>
+                    <p className="text-sm opacity-90">Track your reputation and community impact</p>
                   </div>
                 </Link>
 
@@ -147,7 +158,7 @@ export default function UserPage() {
       </div>
 
       {/* Upload Modal */}
-      <UploadModal
+      <UploadModalLazy
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
       />

@@ -1,24 +1,17 @@
-'use client'
+import ServerNavbar from '@/components/ServerNavbar'
+import ClientHome from '@/components/ClientHome'
+import { Suspense } from 'react'
+import { DashboardSkeleton } from '@/components/skeletons'
+import SuspenseWrapper from '@/components/SuspenseWrapper'
 
-import { useAuth } from '@/contexts/AuthContext'
-import Dashboard from '@/components/Dashboard'
-import Navbar from '@/components/Navbar'
-
+// Server component - no 'use client' directive
 export default function Home() {
-  const { user, loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-r from-yellow-50 to-amber-50 flex items-center justify-center">
-        <div className="loader"></div>
-      </div>
-    )
-  }
-
   return (
     <>
-      <Navbar />
-      <Dashboard />
+      <ServerNavbar />
+      <SuspenseWrapper fallback={<DashboardSkeleton />}>
+        <ClientHome />
+      </SuspenseWrapper>
     </>
   )
 }

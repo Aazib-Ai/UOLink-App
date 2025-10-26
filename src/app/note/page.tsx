@@ -4,14 +4,33 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import PDFViewer from '@/components/PDFViewer'
+import PDFViewerLazy from '@/components/PDFViewerLazy'
 import CommentSection from '@/components/CommentSection'
 import ReportButton from '@/components/ReportButton'
 import { buildR2PublicUrlFromBase, deriveR2ObjectKey, isR2LikeHost } from '@/lib/r2-shared'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAuraTier, formatAura } from '@/lib/aura'
 import { slugify } from '@/lib/utils'
-import { LogIn, Shield, Flame, Skull, Sparkles, ArrowLeft, ExternalLink, BookOpen, GraduationCap, User } from 'lucide-react'
+import { generateProfileUrl } from '@/lib/firebase/profile-resolver'
+import {
+  resolveUploadDescriptorByUrl,
+  resolveUploadDescriptorByMime,
+  resolveUploadDescriptorByExtension,
+} from '@/constants/uploadFileTypes'
+import {
+  LogIn,
+  Shield,
+  Flame,
+  Skull,
+  Sparkles,
+  ArrowLeft,
+  ExternalLink,
+  BookOpen,
+  GraduationCap,
+  User,
+  FileText,
+} from 'lucide-react'
+import PWADownloadButton from '@/components/PWADownloadButton'
 
 const r2PublicBaseUrl =
   (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL || '').trim()
@@ -29,12 +48,29 @@ const r2Hostname = (() => {
 })()
 
 const isPDFUrl = (url: string) => {
-  const lowerUrl = url.toLowerCase()
-  if (lowerUrl.includes('.pdf')) {
-    return true
+  if (!url) {
+    return false
   }
 
-  return r2Hostname ? lowerUrl.includes(r2Hostname) : false
+  const descriptor = resolveUploadDescriptorByUrl(url)
+  if (descriptor) {
+    return descriptor.extension === 'pdf'
+  }
+
+  if (r2Hostname) {
+    try {
+      const parsed = new URL(url)
+      if (parsed.hostname.toLowerCase() === r2Hostname) {
+        return true
+      }
+    } catch {
+      if (url.toLowerCase().includes(r2Hostname)) {
+        return true
+      }
+    }
+  }
+
+  return url.toLowerCase().includes('.pdf')
 }
 
 const resolveNoteUrl = ({
@@ -84,7 +120,7 @@ const resolveNoteUrl = ({
   return rawUrl ?? ''
 }
 
-const getVibeBadge = (score: number): { icon: JSX.Element | null; classes: string } => {
+const getCredibilityBadge = (score: number): { icon: JSX.Element | null; classes: string } => {
   if (score > 10) {
     return {
       icon: <Flame className="h-3 w-3" aria-hidden="true" />,
@@ -137,12 +173,14 @@ function NotePageContent() {
     const id = searchParams.get('id')
     const subject = searchParams.get('subject')
     const teacher = searchParams.get('teacher') ?? searchParams.get('module')
-    const contributor = searchParams.get('contributor')
+    const contributorLegacy = searchParams.get('contributor')
+    const contributorDisplayNameParam = searchParams.get('contributorDisplayName')
+    const contributorUsername = searchParams.get('contributorUsername')
     const storageProvider = searchParams.get('storageProvider')
     const storageKey = searchParams.get('storageKey')
     const storageBucket = searchParams.get('storageBucket')
-    const vibeScoreParam = Number.parseFloat(searchParams.get('vibeScore') ?? '0')
-    const safeVibeScore = Number.isFinite(vibeScoreParam) ? vibeScoreParam : 0
+    const credibilityScoreParam = Number.parseFloat(searchParams.get('credibilityScore') ?? '0')
+    const safeCredibilityScore = Number.isFinite(credibilityScoreParam) ? credibilityScoreParam : 0
     const auraParam = Number.parseFloat(searchParams.get('aura') ?? '0')
     const safeAura = Number.isFinite(auraParam) ? auraParam : 0
 
@@ -154,6 +192,9 @@ function NotePageContent() {
       storageBucket,
     })
 
+    const contributorDisplayName =
+      contributorDisplayNameParam ?? contributorLegacy ?? 'Unknown'
+
     if (decodedUrl || storageKey) {
       setNoteData({
         url: finalUrl,
@@ -161,12 +202,14 @@ function NotePageContent() {
         id,
         subject: subject ?? 'Unknown',
         teacher: teacher ?? 'Unknown',
-        contributor: contributor ?? 'Unknown',
+        contributor: contributorDisplayName,
+        contributorDisplayName,
+        contributorUsername: contributorUsername ?? contributorLegacy ?? null,
         storageProvider,
         storageKey,
         storageBucket,
         aura: safeAura,
-        vibeScore: safeVibeScore,
+        credibilityScore: safeCredibilityScore,
       })
     } else {
       setNoteData(null)
@@ -176,15 +219,52 @@ function NotePageContent() {
   }, [searchParams])
 
   const noteUrl = useMemo(() => (noteData?.url ? noteData.url : ''), [noteData])
-  const vibeScoreValue = useMemo(() => {
+  const noteDescriptor = useMemo(() => {
+    if (!noteData) {
+      return noteUrl ? resolveUploadDescriptorByUrl(noteUrl) : undefined
+    }
+
+    const contentType =
+      typeof noteData.contentType === 'string' ? noteData.contentType.trim() : ''
+    if (contentType) {
+      const descriptorByMime = resolveUploadDescriptorByMime(contentType)
+      if (descriptorByMime) {
+        return descriptorByMime
+      }
+    }
+
+    const extension =
+      typeof noteData.fileExtension === 'string' ? noteData.fileExtension.trim() : ''
+    if (extension) {
+      const descriptorByExtension = resolveUploadDescriptorByExtension(extension)
+      if (descriptorByExtension) {
+        return descriptorByExtension
+      }
+    }
+
+    return noteUrl ? resolveUploadDescriptorByUrl(noteUrl) : undefined
+  }, [noteData, noteUrl])
+  const noteDescriptorSingular = useMemo(() => {
+    if (!noteDescriptor?.label) {
+      return 'document'
+    }
+
+    const label = noteDescriptor.label.trim()
+    if (label.toLowerCase().endsWith('s')) {
+      return label.slice(0, -1)
+    }
+    return label
+  }, [noteDescriptor])
+  const noteDescriptorLower = noteDescriptorSingular.toLowerCase()
+  const credibilityScoreValue = useMemo(() => {
     const rawScore =
-      typeof noteData?.vibeScore === 'number'
-        ? noteData.vibeScore
-        : Number.parseFloat(noteData?.vibeScore ?? '0')
+      typeof noteData?.credibilityScore === 'number'
+        ? noteData.credibilityScore
+        : Number.parseFloat(noteData?.credibilityScore ?? '0')
     return Number.isFinite(rawScore) ? Math.round(rawScore) : 0
   }, [noteData])
-  const vibeBadge = getVibeBadge(vibeScoreValue)
-  const vibeDisplayValue = vibeScoreValue > 0 ? `+${vibeScoreValue}` : `${vibeScoreValue}`
+  const credibilityBadge = getCredibilityBadge(credibilityScoreValue)
+  const credibilityDisplayValue = credibilityScoreValue > 0 ? `+${credibilityScoreValue}` : `${credibilityScoreValue}`
   const auraInfo = useMemo(
     () =>
       getAuraTier(
@@ -196,9 +276,26 @@ function NotePageContent() {
   )
   const auraDisplayValue = formatAura(auraInfo.aura)
   const contributorProfileUrl = useMemo(() => {
-    if (noteData?.contributor) {
-      return `/profile/${encodeURIComponent(slugify(noteData.contributor))}`
+    if (!noteData) {
+      return null
     }
+
+    const username =
+      typeof noteData.contributorUsername === 'string'
+        ? noteData.contributorUsername.trim()
+        : ''
+
+    if (username) {
+      return `/profile/${encodeURIComponent(username)}`
+    }
+
+    const legacyIdentifier =
+      typeof noteData.contributor === 'string' ? noteData.contributor.trim() : ''
+
+    if (legacyIdentifier) {
+      return `/profile/${encodeURIComponent(legacyIdentifier)}`
+    }
+
     return null
   }, [noteData])
 
@@ -279,34 +376,6 @@ function NotePageContent() {
           <section className="mt-3 xs:mt-4 overflow-hidden rounded-2xl xs:rounded-3xl border border-lime-100 bg-white shadow-sm sm:mt-6 w-full">
             <div className="bg-gradient-to-br from-[#f7fbe9] via-white to-white px-3 xs:px-4 py-4 xs:py-5 sm:px-8 sm:py-8 w-full">
               <div className="flex flex-col gap-4 xs:gap-5 md:flex-row md:items-start md:justify-between w-full">
-                <div className="space-y-3 xs:space-y-4 text-center md:text-left w-full">
-                  <span className="inline-flex items-center gap-1.5 xs:gap-2 rounded-full border border-lime-100 bg-white/80 px-2 xs:px-3 py-1 text-[10px] xs:text-[11px] font-semibold uppercase tracking-wide text-[#5f7050] sm:text-xs">
-                    <BookOpen className="h-3 w-3 xs:h-3.5 xs:w-3.5 text-[#90c639]" />
-                    <span className="hidden xs:inline">Study material</span>
-                    <span className="inline xs:hidden">Material</span>
-                  </span>
-                  <div className="w-full">
-                    <h1 className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold text-[#1f2f10] leading-tight break-words">{noteData.subject}</h1>
-                    <p className="mt-1.5 xs:mt-2 text-xs sm:text-sm text-[#4c5c3c] sm:text-base">Instructor {noteData.teacher}</p>
-                    <p className="mt-1 text-xs sm:text-sm text-[#5f7050]">Shared by {noteData.contributor}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 xs:gap-2 text-[10px] xs:text-[11px] font-semibold uppercase tracking-wide text-[#5f7050] md:justify-start sm:text-xs w-full">
-                    <span
-                      className={`inline-flex items-center gap-0.5 xs:gap-1 rounded-full border px-2 xs:px-3 py-1 ${auraInfo.tier.badgeClass}`}
-                      title={`Aura ${auraDisplayValue}`}
-                    >
-                      <Sparkles className="h-2.5 w-2.5 xs:h-3 xs:w-3" />
-                      <span className="hidden xs:inline">{auraInfo.tier.name}</span>
-                      <span className="inline xs:hidden">{auraInfo.tier.name.split(' ')[0]}</span>
-                    </span>
-                                        {!auraInfo.isMaxTier && (
-                      <span className="inline-flex items-center gap-0.5 xs:gap-1 rounded-full bg-white/80 px-2 xs:px-3 py-1 text-[10px] xs:text-[11px] text-[#4c5c3c]">
-                        <span className="hidden xs:inline">{formatAura(auraInfo.auraToNext)} to reach {auraInfo.nextTier?.name}</span>
-                        <span className="inline xs:hidden">+{formatAura(auraInfo.auraToNext)}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
 
                               </div>
             </div>
@@ -337,12 +406,14 @@ function NotePageContent() {
                       <Link
                         href={contributorProfileUrl}
                         className="text-[#1f2f10] hover:text-[#90c639] transition-colors duration-200 hover:underline"
-                        title={`View ${noteData.contributor}'s profile`}
+                        title={`View ${(noteData.contributorDisplayName || noteData.contributor || 'Contributor')}'s profile`}
                       >
-                        {noteData.contributor}
+                        {noteData.contributorDisplayName || noteData.contributor}
                       </Link>
                     ) : (
-                      <span className="text-[#1f2f10]">{noteData.contributor}</span>
+                      <span className="text-[#1f2f10]">
+                        {noteData.contributorDisplayName || noteData.contributor}
+                      </span>
                     )}
                   </dd>
                 </div>
@@ -351,7 +422,7 @@ function NotePageContent() {
                     <Sparkles className="h-3 w-3 xs:h-3.5 xs:w-3.5 text-lime-600" />
                     Credibility
                   </dt>
-                  <dd className="mt-1.5 xs:mt-2 text-xs xs:text-sm font-medium text-lime-800 w-full">{vibeDisplayValue}</dd>
+                  <dd className="mt-1.5 xs:mt-2 text-xs xs:text-sm font-medium text-lime-800 w-full">{credibilityDisplayValue}</dd>
                 </div>
               </dl>
             </div>
@@ -359,45 +430,58 @@ function NotePageContent() {
 
           <section className="mt-4 xs:mt-5 sm:mt-6 overflow-hidden rounded-2xl xs:rounded-3xl border border-lime-100 bg-white shadow-sm sm:mt-8 w-full">
             {isPDFUrl(noteUrl) ? (
-              <PDFViewer url={noteUrl} title={`${noteData.subject} - ${noteData.teacher}`} />
+              <PDFViewerLazy url={noteUrl} title={`${noteData.subject} - ${noteData.teacher}`} />
             ) : (
               <div className="space-y-3 xs:space-y-4 w-full">
                 <div className="flex flex-col gap-2 xs:gap-3 border-b border-lime-100 bg-[#f7fbe9] px-3 xs:px-4 py-3 xs:py-4 text-center sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:text-left w-full">
-                  <h2 className="text-sm xs:text-base font-semibold text-[#1f2f10] sm:text-lg">Note viewer</h2>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                  <h2 className="text-sm xs:text-base font-semibold text-[#1f2f10] sm:text-lg">Document viewer</h2>
+                  <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center sm:gap-2">
                     <ReportButton
                       noteId={noteData.id || ''}
                       size="sm"
                       variant="button"
                       className="text-[10px] xs:text-xs px-2 xs:px-2.5 py-1.5 xs:py-1.5"
                     />
-                    <a
-                      href={noteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-1.5 xs:gap-2 rounded-full bg-[#90c639] px-3 xs:px-4 py-2 text-xs xs:text-sm font-semibold text-white transition hover:bg-[#7ab332] touch-manipulation active:scale-95"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 xs:h-4 xs:w-4" />
-                      <span className="hidden xs:inline">Open in new tab</span>
-                      <span className="inline xs:hidden">Open</span>
-                    </a>
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-lime-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#5f7050]">
+                      <FileText className="h-3 w-3" />
+                      {noteDescriptorSingular}
+                    </div>
                   </div>
                 </div>
                 <div className="px-3 xs:px-4 pb-4 xs:pb-6 sm:px-8 sm:pb-8 w-full">
-                  <div className="rounded-xl xs:rounded-2xl border border-dashed border-lime-200 bg-[#f3f8e7] p-4 xs:p-5 text-center sm:p-6 w-full">
-                    <p className="text-xs xs:text-sm text-[#4c5c3c] sm:text-base">
-                      This note works best in a dedicated tab. Tap below to open it with your browser&apos;s viewer.
+                  <div className="rounded-xl xs:rounded-2xl border border-dashed border-lime-200 bg-[#f3f8e7] p-4 xs:p-5 sm:p-6 text-center sm:text-left w-full">
+                    <div className="mx-auto flex w-fit items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#5f7050] sm:mx-0">
+                      <FileText className="h-3 w-3" />
+                      Preview coming soon
+                    </div>
+                    <h3 className="mt-3 text-sm font-semibold text-[#1f2f10] sm:text-base">
+                      We&apos;re still polishing in-app previews for {noteDescriptorLower}.
+                    </h3>
+                    <p className="mt-2 text-xs xs:text-sm text-[#4c5c3c] sm:text-base">
+                      Open it in your browser to flip through the slides or download a copy to keep studying without the internet.
                     </p>
-                    <a
-                      href={noteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 xs:mt-4 inline-flex items-center gap-1.5 xs:gap-2 rounded-full bg-[#90c639] px-4 xs:px-5 py-2 text-xs xs:text-sm font-semibold text-white transition hover:bg-[#7ab332] touch-manipulation active:scale-95"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 xs:h-4 xs:w-4" />
-                      <span className="hidden xs:inline">View full note</span>
-                      <span className="inline xs:hidden">View</span>
-                    </a>
+                    <ul className="mt-3 space-y-1.5 text-[11px] text-[#5f7050] sm:text-sm">
+                      <li>• Browser viewers keep the original layout for quick reading.</li>
+                      <li>• Downloads give you an offline copy for highlighting and sharing.</li>
+                    </ul>
+                    <div className="mt-4 flex flex-col items-center justify-center gap-2 sm:flex-row sm:justify-start">
+                      <a
+                        href={noteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#90c639] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#7ab332] touch-manipulation active:scale-95 sm:w-auto sm:text-sm"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 xs:h-4 xs:w-4" />
+                        Open {noteDescriptorSingular}
+                      </a>
+                      <PWADownloadButton
+                        url={noteUrl}
+                        title={`${noteData.subject ?? 'note'}-${noteData.teacher ?? ''}`}
+                        className="w-full justify-center rounded-full border border-lime-200 text-xs font-semibold text-[#334125] hover:border-[#90c639] sm:w-auto sm:text-sm"
+                      >
+                        Download {noteDescriptorSingular}
+                      </PWADownloadButton>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -408,8 +492,8 @@ function NotePageContent() {
             <div className="mt-3 xs:mt-4 flex flex-col gap-2 xs:gap-3 rounded-xl xs:rounded-2xl border border-amber-200 bg-amber-50 px-3 xs:px-4 py-2.5 xs:py-3 sm:flex-row sm:items-center sm:justify-between w-full">
               <div className="flex items-center gap-1.5 xs:gap-2 text-xs xs:text-sm text-amber-700">
                 <Shield className="h-3.5 w-3.5 xs:h-4 xs:w-4 flex-shrink-0" />
-                <span className="hidden xs:inline">Join UoLink to unlock downloads and save notes for later.</span>
-                <span className="inline xs:hidden">Join to unlock downloads & save notes</span>
+                <span className="hidden xs:inline">Join UoLink to unlock downloads and save this {noteDescriptorLower} for later.</span>
+                <span className="inline xs:hidden">Join to unlock downloads</span>
               </div>
               <Link
                 href="/auth"

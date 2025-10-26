@@ -1,0 +1,67 @@
+{
+    "name": "UoLink - University Notes & Study Hub",
+    "short_name": "UoLink",
+    "description": "Share, discover and collaborate on university notes with your peers",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#fefce8",
+    "theme_color": "#90c639",
+    "orientation": "portrait-primary",
+    "scope": "/",
+    "lang": "en",
+    "categories": [
+        "education",
+        "productivity",
+        "social"
+    ],
+    "icons": [
+        {
+            "src": "/Icon.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Upload Notes",
+            "short_name": "Upload",
+            "description": "Quickly upload new notes",
+            "url": "/?action=upload",
+            "icons": [
+                {
+                    "src": "/icons/upload-shortcut.png",
+                    "sizes": "96x96"
+                }
+            ]
+        },
+        {
+            "name": "Leaderboard",
+            "short_name": "Rankings",
+            "description": "View community leaderboard",
+            "url": "/leaderboard",
+            "icons": [
+                {
+                    "src": "/icons/leaderboard-shortcut.png",
+                    "sizes": "96x96"
+                }
+            ]
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "/screenshots/mobile-dashboard.png",
+            "sizes": "390x844",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Dashboard view on mobile"
+        },
+        {
+            "src": "/screenshots/desktop-dashboard.png",
+            "sizes": "1280x720",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "Dashboard view on desktop"
+        }
+    ]
+}

@@ -10,6 +10,7 @@ interface CustomSelectProps {
   value?: string;
   disabled?: boolean;
   className?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 type DropdownPosition = {
@@ -29,7 +30,8 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
   onChange,
   value,
   disabled = false,
-  className = ''
+  className = '',
+  size = 'md'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -155,7 +157,9 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
   return (
     <div className="relative w-full" aria-disabled={disabled}>
       <div
-        className={`border ${isOpen ? 'border-[#90c639] bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'} transition-all duration-200 rounded-xl p-4 bg-white shadow-md ${
+        className={`border ${isOpen ? 'border-[#90c639] bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'} transition-all duration-200 rounded-xl ${
+          size === 'sm' ? 'p-2 md:p-3' : size === 'lg' ? 'p-5' : 'p-3 md:p-4'
+        } bg-white shadow-md ${
           disabled ? 'cursor-not-allowed opacity-60 hover:bg-white hover:border-gray-300' : 'cursor-pointer'
         } ${className}`}
         ref={triggerRef}
@@ -167,13 +171,15 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
         }}
       >
         <div className="flex items-center justify-between">
-          <span className={`text-sm font-medium ${!value ? 'text-gray-500' : 'text-gray-900'}`}>
+          <span className={`${
+            size === 'sm' ? 'text-xs md:text-sm' : size === 'lg' ? 'text-base' : 'text-sm'
+          } font-medium ${!value ? 'text-gray-500' : 'text-gray-900'}`}>
             {value || placeholder || "Select an option"}
           </span>
           <span
             className={`transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           >
-            <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`${size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} text-gray-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </span>

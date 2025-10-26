@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Flag, AlertTriangle, X, Shield, LogIn } from 'lucide-react'
+import { Flag, AlertTriangle, X, Shield, LogIn, RotateCcw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { reportContent, getReportStatus } from '@/lib/firebase'
+import { reportContent, getReportStatus, undoReport } from '@/lib/firebase'
 import Link from 'next/link'
 
 interface ReportButtonProps {
@@ -11,6 +11,7 @@ interface ReportButtonProps {
   className?: string
   size?: 'sm' | 'md' | 'lg'
   variant?: 'button' | 'icon'
+  onReportUpdate?: (noteId: string, reportCount: number, hasReported: boolean) => void
 }
 
 const REPORT_REASONS = [
@@ -45,16 +46,19 @@ export default function ReportButton({
   noteId,
   className = '',
   size = 'sm',
-  variant = 'icon'
+  variant = 'icon',
+  onReportUpdate
 }: ReportButtonProps) {
   const { user } = useAuth()
   const [showDialog, setShowDialog] = useState(false)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+  const [showUndoDialog, setShowUndoDialog] = useState(false)
   const [hasReported, setHasReported] = useState(false)
   const [reportCount, setReportCount] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [undoSuccess, setUndoSuccess] = useState(false)
   const [selectedReason, setSelectedReason] = useState('')
   const [description, setDescription] = useState('')
 
@@ -77,14 +81,22 @@ export default function ReportButton({
     checkReportStatus()
   }, [noteId])
 
-  const handleReportClick = () => {
+  const handleReportClick = (event?: React.MouseEvent) => {
+    // Prevent any default behavior and event bubbling
+    if (event) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    console.log(`Report button clicked - noteId: ${noteId}, hasReported: ${hasReported}`)
+
     if (!user) {
       setShowLoginPrompt(true)
       return
     }
 
     if (hasReported) {
-      setError('You have already reported this content')
+      setShowUndoDialog(true)
       return
     }
 
@@ -105,11 +117,18 @@ export default function ReportButton({
 
     try {
       await reportContent(noteId, selectedReason, description.trim())
+      
+      // Get updated report status from server
+      const updatedStatus = await getReportStatus(noteId)
+      
       setHasReported(true)
-      setReportCount(prev => prev + 1)
+      setReportCount(updatedStatus.reportCount)
       setSuccess(true)
       setSelectedReason('')
       setDescription('')
+
+      // Notify parent component of the report update
+      onReportUpdate?.(noteId, updatedStatus.reportCount, true)
 
       // Close dialog after success
       setTimeout(() => {
@@ -124,11 +143,48 @@ export default function ReportButton({
     }
   }
 
+  const handleUndoReport = async () => {
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      await undoReport(noteId)
+      
+      // Get updated report status from server
+      const updatedStatus = await getReportStatus(noteId)
+      
+      setHasReported(false)
+      setReportCount(updatedStatus.reportCount)
+      setUndoSuccess(true)
+
+      // Notify parent component of the report update
+      onReportUpdate?.(noteId, updatedStatus.reportCount, false)
+
+      // Close dialog after success
+      setTimeout(() => {
+        setShowUndoDialog(false)
+        setUndoSuccess(false)
+      }, 2000)
+
+    } catch (err: any) {
+      setError(err.message || 'Failed to undo report. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleCloseDialog = () => {
     if (!isSubmitting && !success) {
       setShowDialog(false)
       setSelectedReason('')
       setDescription('')
+      setError(null)
+    }
+  }
+
+  const handleCloseUndoDialog = () => {
+    if (!isSubmitting && !undoSuccess) {
+      setShowUndoDialog(false)
       setError(null)
     }
   }
@@ -139,22 +195,27 @@ export default function ReportButton({
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className={`w-full ${sizeConfig.dialog} bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto`}>
+        <div className={`w-full ${sizeConfig.dialog} bg-white rounded-3xl border border-lime-100 shadow-sm max-h-[90vh] overflow-y-auto`}>
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-red-50 to-orange-50">
+          <div className="flex items-center justify-between p-4 border-b border-lime-100 bg-gradient-to-b from-[#f7fbe9] via-white to-white">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#e8f3d2] text-[#90c639]">
                 <Flag className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Report Content</h3>
-                <p className="text-xs text-gray-600">Help keep our community safe</p>
+                <h3 className="text-lg font-semibold text-[#1f2f10]">Report Content</h3>
+                <p className="text-xs text-[#4c5c3c]">Help keep our community safe</p>
               </div>
             </div>
             <button
-              onClick={handleCloseDialog}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleCloseDialog()
+              }}
               disabled={isSubmitting || success}
-              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors disabled:cursor-not-allowed"
+              className="rounded-lg p-1 text-[#4c5c3c] hover:bg-[#f7fbe9] hover:text-[#1f2f10] transition-colors disabled:cursor-not-allowed"
             >
               <X className="w-5 h-5" />
             </button>
@@ -164,11 +225,11 @@ export default function ReportButton({
           <div className="p-4 space-y-4">
             {success ? (
               <div className="text-center py-6">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600 mx-auto mb-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#e8f3d2] text-[#90c639] mx-auto mb-4">
                   <Shield className="w-8 h-8" />
                 </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">Report Submitted</h4>
-                <p className="text-sm text-gray-600">
+                <h4 className="text-lg font-semibold text-[#1f2f10] mb-2">Report Submitted</h4>
+                <p className="text-sm text-[#4c5c3c]">
                   Thank you for helping keep our community safe. We'll review this content soon.
                 </p>
               </div>
@@ -176,7 +237,7 @@ export default function ReportButton({
               <>
                 {/* Report Reasons */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                  <label className="block text-sm font-medium text-[#1f2f10] mb-3">
                     Why are you reporting this content?
                   </label>
                   <div className="space-y-2">
@@ -184,10 +245,10 @@ export default function ReportButton({
                       <label
                         key={reason}
                         className={`
-                          flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all
+                          flex items-center p-3 rounded-2xl border-2 cursor-pointer transition-all
                           ${selectedReason === reason
-                            ? 'border-red-300 bg-red-50 ring-2 ring-red-200'
-                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                            ? 'border-[#90c639] bg-[#f7fbe9] ring-2 ring-[#e8f3d2]'
+                            : 'border-lime-100 hover:border-[#90c639] bg-white'
                           }
                         `}
                       >
@@ -202,8 +263,8 @@ export default function ReportButton({
                         <div className={`
                           w-4 h-4 rounded-full border-2 mr-3 flex-shrink-0
                           ${selectedReason === reason
-                            ? 'border-red-500 bg-red-500'
-                            : 'border-gray-300'
+                            ? 'border-[#90c639] bg-[#90c639]'
+                            : 'border-lime-200'
                           }
                         `}>
                           {selectedReason === reason && (
@@ -212,7 +273,7 @@ export default function ReportButton({
                             </div>
                           )}
                         </div>
-                        <span className="text-sm text-gray-700">{reason}</span>
+                        <span className="text-sm text-[#334125]">{reason}</span>
                       </label>
                     ))}
                   </div>
@@ -220,27 +281,27 @@ export default function ReportButton({
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                  <label className="block text-sm font-medium text-[#1f2f10] mb-2">
                     Additional details (optional)
                   </label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Provide any additional context that might help us review this content..."
-                    className="w-full min-h-[80px] px-3 py-2 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 text-sm"
+                    className="w-full min-h-[80px] px-3 py-2 border border-lime-100 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-[#e8f3d2] focus:border-[#90c639] text-sm"
                     maxLength={500}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[#4c5c3c] mt-1">
                     {description.length}/500 characters
                   </p>
                 </div>
 
                 {/* Error Message */}
                 {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="bg-[#f0f6e2] border border-lime-200 rounded-2xl p-3">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-red-700">{error}</p>
+                      <AlertTriangle className="w-4 h-4 text-[#90c639] mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-[#1f2f10]">{error}</p>
                     </div>
                   </div>
                 )}
@@ -248,16 +309,26 @@ export default function ReportButton({
                 {/* Actions */}
                 <div className="flex gap-3 pt-2">
                   <button
-                    onClick={handleCloseDialog}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleCloseDialog()
+                    }}
                     disabled={isSubmitting}
-                    className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:cursor-not-allowed touch-manipulation"
+                    className="flex-1 px-4 py-2.5 border border-lime-100 text-[#334125] rounded-full hover:border-[#90c639] hover:text-[#1f2f10] transition-colors disabled:cursor-not-allowed touch-manipulation"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={handleSubmitReport}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleSubmitReport()
+                    }}
                     disabled={isSubmitting || !selectedReason}
-                    className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:cursor-not-allowed disabled:bg-gray-300 touch-manipulation flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-2.5 bg-[#90c639] text-white rounded-full hover:bg-[#7ab332] transition-colors disabled:cursor-not-allowed disabled:bg-lime-300 touch-manipulation flex items-center justify-center gap-2"
                   >
                     {isSubmitting ? (
                       <>
@@ -277,33 +348,149 @@ export default function ReportButton({
     )
   }
 
+  // Undo dialog render function
+  const renderUndoDialog = () => {
+    if (!showUndoDialog) return null
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className={`w-full ${sizeConfig.dialog} bg-white rounded-3xl border border-lime-100 shadow-sm max-h-[90vh] overflow-y-auto`}>
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-lime-100 bg-gradient-to-b from-[#f7fbe9] via-white to-white">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#e8f3d2] text-[#90c639]">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-[#1f2f10]">Undo Report</h3>
+                <p className="text-xs text-[#4c5c3c]">Remove your report from this content</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleCloseUndoDialog()
+              }}
+              disabled={isSubmitting || undoSuccess}
+              className="rounded-lg p-1 text-[#4c5c3c] hover:bg-[#f7fbe9] hover:text-[#1f2f10] transition-colors disabled:cursor-not-allowed"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-4 space-y-4">
+            {undoSuccess ? (
+              <div className="text-center py-6">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#e8f3d2] text-[#90c639] mx-auto mb-4">
+                  <Shield className="w-8 h-8" />
+                </div>
+                <h4 className="text-lg font-semibold text-[#1f2f10] mb-2">Report Removed</h4>
+                <p className="text-sm text-[#4c5c3c]">
+                  Your report has been successfully removed. The content's status has been updated.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="text-center py-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f0f6e2] text-[#90c639] mx-auto mb-3">
+                    <RotateCcw className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-base font-semibold text-[#1f2f10] mb-2">Remove Your Report?</h4>
+                  <p className="text-sm text-[#4c5c3c] mb-4">
+                    Are you sure you want to undo your report? This action will remove your report from the system.
+                  </p>
+                </div>
+
+                {/* Error Message */}
+                {error && (
+                  <div className="bg-[#f0f6e2] border border-lime-200 rounded-2xl p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-[#90c639] mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-[#1f2f10]">{error}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleCloseUndoDialog()
+                    }}
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-2.5 border border-lime-100 text-[#334125] rounded-full hover:border-[#90c639] hover:text-[#1f2f10] transition-colors disabled:cursor-not-allowed touch-manipulation"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleUndoReport()
+                    }}
+                    disabled={isSubmitting}
+                    className="flex-1 px-4 py-2.5 bg-[#90c639] text-white rounded-full hover:bg-[#7ab332] transition-colors disabled:cursor-not-allowed disabled:bg-lime-300 touch-manipulation flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Removing...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4" />
+                        Undo Report
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Login prompt render function
   const renderLoginPrompt = () => {
     if (!showLoginPrompt) return null
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-4">
+        <div className="w-full max-w-sm bg-white rounded-3xl border border-lime-100 shadow-sm p-4">
           <div className="text-center mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 mx-auto mb-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f3d2] text-[#90c639] mx-auto mb-3">
               <LogIn className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Sign In Required</h3>
-            <p className="text-sm text-gray-600">
+            <h3 className="text-lg font-semibold text-[#1f2f10] mb-2">Sign In Required</h3>
+            <p className="text-sm text-[#4c5c3c]">
               Please sign in to report content and help keep our community safe.
             </p>
           </div>
 
           <div className="flex gap-3">
             <button
-              onClick={() => setShowLoginPrompt(false)}
-              className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors touch-manipulation"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowLoginPrompt(false)
+              }}
+              className="flex-1 px-4 py-2.5 border border-lime-100 text-[#334125] rounded-full hover:border-[#90c639] hover:text-[#1f2f10] transition-colors touch-manipulation"
             >
               Cancel
             </button>
             <Link
               href="/auth"
-              className="flex-1 text-center px-4 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors touch-manipulation"
+              className="flex-1 text-center px-4 py-2.5 bg-[#90c639] text-white rounded-full hover:bg-[#7ab332] transition-colors touch-manipulation"
             >
               Sign In
             </Link>
@@ -318,26 +505,35 @@ export default function ReportButton({
     return (
       <>
         <button
-          onClick={handleReportClick}
+          type="button"
+          onClick={(e) => handleReportClick(e)}
           className={`
-            inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600
-            transition-all duration-200 hover:bg-red-100 hover:border-red-300
-            focus:outline-none focus:ring-2 focus:ring-red-200 focus:ring-offset-1
+            inline-flex items-center gap-1.5 rounded-full border
+            ${hasReported
+              ? 'border-[#90c639] bg-[#f7fbe9] text-[#90c639] hover:bg-[#e8f3d2] hover:border-[#7ab332]'
+              : 'border-lime-200 bg-[#f0f6e2] text-[#90c639] hover:bg-[#e8f3d2] hover:border-[#90c639]'
+            }
+            transition-all duration-200 focus:outline-none focus:ring-2
+            focus:ring-2 focus:ring-offset-1 focus:ring-[#e8f3d2]
             disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation
             ${sizeConfig.button} ${className}
           `}
-          disabled={hasReported}
         >
-          <Flag className={sizeConfig.icon} />
-          {hasReported ? 'Reported' : 'Report'}
-          {reportCount > 0 && (
-            <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full text-xs font-semibold">
-              {reportCount}
-            </span>
+          {hasReported ? (
+            <>
+              <RotateCcw className={sizeConfig.icon} />
+              Undo Report
+            </>
+          ) : (
+            <>
+              <Flag className={sizeConfig.icon} />
+              Report
+            </>
           )}
         </button>
 
         {renderDialog()}
+        {renderUndoDialog()}
         {renderLoginPrompt()}
       </>
     )
@@ -347,26 +543,28 @@ export default function ReportButton({
   return (
     <>
       <button
-        onClick={handleReportClick}
+        type="button"
+        onClick={(e) => handleReportClick(e)}
         className={`
-          flex items-center justify-center rounded-lg border border-red-200 bg-red-50
-          text-red-600 hover:bg-red-100 hover:border-red-300 transition-all duration-200
-          focus:outline-none focus:ring-2 focus:ring-red-200 focus:ring-offset-1
-          p-1.5 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation
+          flex items-center justify-center rounded-lg border p-1.5 transition-all duration-200
+          focus:outline-none focus:ring-2 focus:ring-offset-1 touch-manipulation
+          ${hasReported
+            ? 'border-[#90c639] bg-[#f7fbe9] text-[#90c639] hover:bg-[#e8f3d2] hover:border-[#7ab332] focus:ring-[#e8f3d2]'
+            : 'border-lime-200 bg-[#f0f6e2] text-[#90c639] hover:bg-[#e8f3d2] hover:border-[#90c639] focus:ring-[#e8f3d2]'
+          }
           ${className}
         `}
-        disabled={hasReported}
-        title={hasReported ? 'Already reported' : 'Report content'}
+        title={hasReported ? 'Undo report' : 'Report content'}
       >
-        <Flag className={sizeConfig.icon} />
-        {reportCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold">
-            {reportCount > 9 ? '9+' : reportCount}
-          </span>
+        {hasReported ? (
+          <RotateCcw className={sizeConfig.icon} />
+        ) : (
+          <Flag className={sizeConfig.icon} />
         )}
       </button>
 
       {renderDialog()}
+      {renderUndoDialog()}
       {renderLoginPrompt()}
     </>
   )

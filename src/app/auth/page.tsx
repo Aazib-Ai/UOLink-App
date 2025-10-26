@@ -5,10 +5,17 @@ import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
-import UploadModal from '@/components/UploadModal'
+import UploadModalLazy from '@/components/UploadModalLazy'
 
 export default function AuthPage() {
-  const { user, signInWithGoogle, authenticateWithEmail, error, clearError } = useAuth()
+  const {
+    user,
+    signInWithGoogle,
+    authenticateWithEmail,
+    sendVerificationEmail,
+    error,
+    clearError
+  } = useAuth()
   const router = useRouter()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -17,10 +24,13 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [resendingVerification, setResendingVerification] = useState(false)
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null)
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setStatus(null)
+    setVerificationMessage(null)
     clearError()
 
     if (mode === 'register' && password !== confirmPassword) {
@@ -32,12 +42,13 @@ export default function AuthPage() {
       setSubmitting(true)
       await authenticateWithEmail(email.trim(), password, mode)
       if (mode === 'register') {
-        setStatus('Registration successful! You can now upload materials.')
-        router.push('/complete-profile')
+        setStatus('Registration successful! Check your university inbox for a verification email before continuing.')
+        setVerificationMessage(`A verification link was sent to ${email.trim()}.`)
         return
       }
 
-      setStatus('Signed in successfully.')
+      setStatus('Signed in successfully. Redirecting to dashboard...')
+      router.push('/')
     } catch (authError) {
       setStatus(typeof authError === 'string' ? authError : null)
     } finally {
@@ -47,15 +58,36 @@ export default function AuthPage() {
 
   const handleGoogleSignIn = async () => {
     setStatus(null)
+    setVerificationMessage(null)
     clearError()
     try {
       setSubmitting(true)
       await signInWithGoogle()
-      setStatus('Signed in with Google successfully.')
+
+      // For Google Sign-In, we need to determine if this is a new user or existing user
+      // Since we can't easily determine this from the auth context, we'll redirect to dashboard
+      // New users can navigate to profile edit from the dashboard if needed
+      setStatus('Signed in with Google successfully. Redirecting to dashboard...')
+      router.push('/')
     } catch {
       setStatus(null)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    setVerificationMessage(null)
+    try {
+      setResendingVerification(true)
+      await sendVerificationEmail()
+      setVerificationMessage('Verification email sent. Please check your inbox and spam folder.')
+    } catch (err) {
+      setVerificationMessage(
+        err instanceof Error ? err.message : 'Unable to send verification email right now. Please try again later.'
+      )
+    } finally {
+      setResendingVerification(false)
     }
   }
 
@@ -68,15 +100,48 @@ export default function AuthPage() {
             <h1 className="text-3xl font-bold text-center mb-6">Become a Contributor</h1>
 
             {user && (
-              <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
-                You are signed in as <strong>{user.email}</strong>.{' '}
-                <button
-                  onClick={() => setIsUploadModalOpen(true)}
-                  className="underline font-semibold hover:no-underline"
-                >
-                  Upload materials
-                </button>{' '}
-                to share your knowledge.
+              <div
+                className={`mb-6 rounded-lg border p-4 ${
+                  user.emailVerified
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-amber-200 bg-amber-50 text-amber-900'
+                }`}
+              >
+                {user.emailVerified ? (
+                  <>
+                    You are signed in as <strong>{user.email}</strong>.{' '}
+                    <button
+                      onClick={() => setIsUploadModalOpen(true)}
+                      className="underline font-semibold hover:no-underline"
+                    >
+                      Upload materials
+                    </button>{' '}
+                    to share your knowledge.
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold">Verify your email to continue contributing.</p>
+                    <p className="mt-2 text-sm">
+                      We sent a verification link to <strong>{user.email}</strong>. Open it to activate your account
+                      fully.
+                    </p>
+                    {verificationMessage && (
+                      <p className="mt-2 text-xs">
+                        {verificationMessage}
+                      </p>
+                    )}
+                    <button
+                      onClick={handleResendVerification}
+                      disabled={resendingVerification}
+                      className="mt-3 inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-400"
+                    >
+                      {resendingVerification ? 'Sending...' : 'Resend verification email'}
+                    </button>
+                    <p className="mt-2 text-xs text-amber-700">
+                      After verifying, refresh this page or sign in again to continue.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -97,6 +162,7 @@ export default function AuthPage() {
                     setMode('login')
                     clearError()
                     setStatus(null)
+                    setVerificationMessage(null)
                   }}
                   type="button"
                 >
@@ -108,6 +174,7 @@ export default function AuthPage() {
                     setMode('register')
                     clearError()
                     setStatus(null)
+                    setVerificationMessage(null)
                   }}
                   type="button"
                 >
@@ -168,7 +235,7 @@ export default function AuthPage() {
                   disabled={submitting}
                   className="w-full rounded-lg bg-black px-6 py-3 font-semibold text-white transition-all hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-400"
                 >
-                  {submitting ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Register'}
+                  {submitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Register'}
                 </button>
               </form>
 
@@ -201,7 +268,7 @@ export default function AuthPage() {
       </div>
 
       {/* Upload Modal */}
-      <UploadModal
+      <UploadModalLazy
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
       />

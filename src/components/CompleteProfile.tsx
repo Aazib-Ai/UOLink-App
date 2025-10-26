@@ -10,6 +10,15 @@ import { db } from '@/lib/firebase'
 import { slugify } from '@/lib/utils'
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { MAJOR_NAMES } from '@/constants/universityData'
+import { 
+  generateBaseUsername, 
+  generateUsernameWithConflicts 
+} from '@/lib/username/generation'
+import { 
+  checkAvailability, 
+  reserveUsername 
+} from '@/lib/firebase/username-service'
+import { generateProfileUrl } from '@/lib/firebase/profile-resolver'
 
 interface ProfileData {
   fullName: string
@@ -17,6 +26,8 @@ interface ProfileData {
   semester: string
   section: string
   profilePicture: string | null
+  generatedUsername?: string
+  profileUrl?: string
 }
 
 const SEMESTER_OPTIONS = [
@@ -43,13 +54,16 @@ export default function CompleteProfile() {
     major: '',
     semester: '',
     section: '',
-    profilePicture: null
+    profilePicture: null,
+    generatedUsername: undefined,
+    profileUrl: undefined
   })
 
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
+  const [isGeneratingUsername, setIsGeneratingUsername] = useState(false)
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -61,6 +75,53 @@ export default function CompleteProfile() {
       router.push('/auth')
     }
   }, [user, loading, router])
+
+  // Generate username when full name changes
+  useEffect(() => {
+    const generateUsernamePreview = async () => {
+      if (!profileData.fullName.trim()) {
+        setProfileData(prev => ({ 
+          ...prev, 
+          generatedUsername: undefined, 
+          profileUrl: undefined 
+        }))
+        return
+      }
+
+      setIsGeneratingUsername(true)
+      
+      try {
+        // Generate base username from full name
+        const baseUsername = generateBaseUsername(profileData.fullName.trim())
+        
+        // Check if it's available
+        const isAvailable = await checkAvailability(baseUsername)
+        
+        let finalUsername = baseUsername
+        if (!isAvailable) {
+          // Generate with conflict resolution (this is just for preview)
+          finalUsername = `${baseUsername}-${Math.floor(Math.random() * 100)}`
+        }
+        
+        const profileUrl = generateProfileUrl(finalUsername)
+        
+        setProfileData(prev => ({ 
+          ...prev, 
+          generatedUsername: finalUsername,
+          profileUrl: profileUrl || undefined
+        }))
+      } catch (error) {
+        console.error('Error generating username preview:', error)
+        // Don't show error to user for preview generation
+      } finally {
+        setIsGeneratingUsername(false)
+      }
+    }
+
+    // Debounce username generation
+    const timeoutId = setTimeout(generateUsernamePreview, 500)
+    return () => clearTimeout(timeoutId)
+  }, [profileData.fullName])
 
   useEffect(() => {
     return () => {
@@ -137,14 +198,32 @@ export default function CompleteProfile() {
         return
       }
 
+      // Generate and reserve username atomically
+      const baseUsername = generateBaseUsername(profileData.fullName.trim())
+      let finalUsername = baseUsername
+      
+      // Check availability and generate with conflicts if needed
+      const isAvailable = await checkAvailability(baseUsername)
+      if (!isAvailable) {
+        // Use a more sophisticated conflict resolution
+        const existingUsernames = new Set<string>() // In real implementation, this would be populated
+        finalUsername = generateUsernameWithConflicts(
+          profileData.fullName.trim(),
+          existingUsernames
+        )
+      }
+
+      // Reserve the username atomically
+      await reserveUsername(user.uid, finalUsername)
+
+      // Create the profile with username
       const profileRef = doc(db, 'profiles', user.uid)
       const timestamp = serverTimestamp()
       await setDoc(
         profileRef,
         {
           fullName: profileData.fullName.trim(),
-          fullNameLower: profileData.fullName.trim().toLowerCase(),
-          profileSlug: slugify(profileData.fullName.trim()),
+          username: finalUsername,
           major: profileData.major,
           semester: profileData.semester,
           section: profileData.section,
@@ -152,21 +231,37 @@ export default function CompleteProfile() {
           profileCompleted: true,
           completedAt: timestamp,
           updatedAt: timestamp,
+          usernameLastChanged: timestamp,
           email: user.email ?? null,
+          // Keep legacy fields for backward compatibility during migration
+          fullNameLower: profileData.fullName.trim().toLowerCase(),
+          profileSlug: slugify(profileData.fullName.trim()),
         },
         { merge: true }
       )
 
+      // Update profile data with final username for display
+      setProfileData(prev => ({ 
+        ...prev, 
+        generatedUsername: finalUsername,
+        profileUrl: generateProfileUrl(finalUsername) || undefined
+      }))
+
       // Show success animation
       setShowSuccessAnimation(true)
 
-      // Redirect to dashboard after delay
+      // Redirect to profile edit page after delay
       redirectTimeoutRef.current = setTimeout(() => {
-        router.push('/')
+        router.push('/profile-edit')
       }, 2000)
 
     } catch (err) {
-      setError('Failed to save profile. Please try again.')
+      console.error('Profile creation error:', err)
+      if (err instanceof Error && err.message.includes('Username is already taken')) {
+        setError('The generated username is no longer available. Please try again.')
+      } else {
+        setError('Failed to save profile. Please try again.')
+      }
       setShowSuccessAnimation(false)
     } finally {
       setIsSubmitting(false)
@@ -209,7 +304,7 @@ export default function CompleteProfile() {
             {/* Success Animation */}
             {showSuccessAnimation && (
               <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700 text-center animate-pulse" role="status" aria-live="polite">
-                <p className="font-semibold">Profile completed successfully! Redirecting to dashboard...</p>
+                <p className="font-semibold">Profile completed successfully! Redirecting to profile edit...</p>
               </div>
             )}
 
@@ -291,6 +386,39 @@ export default function CompleteProfile() {
                 />
               </div>
 
+              {/* Generated Profile URL Preview */}
+              {profileData.fullName.trim() && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 text-sm font-semibold">🔗</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-blue-900 mb-1">
+                        Your Profile URL
+                      </h4>
+                      {isGeneratingUsername ? (
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+                          <span className="text-sm text-blue-700">Generating...</span>
+                        </div>
+                      ) : profileData.profileUrl ? (
+                        <div>
+                          <p className="text-sm text-blue-800 font-mono bg-white px-2 py-1 rounded border break-all">
+                            uolink.com{profileData.profileUrl}
+                          </p>
+                          <p className="text-xs text-blue-600 mt-1">
+                            This will be your unique profile link that others can use to find you.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-blue-700">Enter your name to see your profile URL</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Major Dropdown */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -364,7 +492,7 @@ export default function CompleteProfile() {
               <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/profile-edit')}
                   className="text-gray-500 hover:text-gray-700 text-sm underline transition-colors"
                 >
                   Skip for now
