@@ -210,34 +210,7 @@ class ContributionsService {
 
   async deleteContribution(noteId: string): Promise<ContributionsServiceResponse<void>> {
     try {
-      // Get current user for authentication
-      const { getAuth } = await import('firebase/auth')
-      const auth = getAuth()
-      const currentUser = auth.currentUser
-
-      if (!currentUser) {
-        return {
-          data: null,
-          error: 'You must be signed in to delete notes.',
-          success: false,
-        }
-      }
-
-      // Get ID token for authentication
-      const token = await currentUser.getIdToken()
-
-      // Call the DELETE API endpoint which handles both Firestore and R2 deletion
-      const response = await fetch(`/api/upload?noteId=${encodeURIComponent(noteId)}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `Failed to delete note (${response.status})`)
-      }
+      await deleteDoc(doc(db, 'notes', noteId))
 
       return {
         data: null,

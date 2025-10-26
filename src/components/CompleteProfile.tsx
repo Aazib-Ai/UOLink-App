@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, X, Loader2 } from 'lucide-react'
+import { Camera, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import CustomSelect from './CustomSelect'
 import Navbar from './Navbar'
@@ -60,7 +60,6 @@ export default function CompleteProfile() {
   })
 
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
@@ -132,7 +131,7 @@ export default function CompleteProfile() {
     }
   }, [])
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
@@ -140,52 +139,13 @@ export default function CompleteProfile() {
         return
       }
 
-      if (!file.type.startsWith('image/')) {
-        setError('Please select an image file')
-        return
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const result = e.target?.result as string
+        setPreviewImage(result)
+        setProfileData(prev => ({ ...prev, profilePicture: result }))
       }
-
-      setError(null)
-      setIsUploadingImage(true)
-
-      try {
-        // Show preview immediately
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          setPreviewImage(e.target?.result as string)
-        }
-        reader.readAsDataURL(file)
-
-        // Upload to R2 using the profile picture API
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const token = await user?.getIdToken()
-        const response = await fetch('/api/profile-picture', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to upload image')
-        }
-
-        const { fileUrl } = await response.json()
-        setProfileData(prev => ({ ...prev, profilePicture: fileUrl }))
-
-      } catch (err) {
-        console.error('Upload error:', err)
-        setError(err instanceof Error ? err.message : 'Failed to upload image')
-        // Reset preview on error
-        setPreviewImage(null)
-        setProfileData(prev => ({ ...prev, profilePicture: null }))
-      } finally {
-        setIsUploadingImage(false)
-      }
+      reader.readAsDataURL(file)
     }
   }
 
@@ -373,12 +333,7 @@ export default function CompleteProfile() {
                     tabIndex={0}
                     aria-label="Upload profile picture"
                   >
-                    {isUploadingImage ? (
-                      <div className="text-center">
-                        <Loader2 className="w-8 h-8 md:w-10 md:h-10 text-amber-600 mx-auto mb-2 animate-spin" />
-                        <span className="text-xs text-amber-600 font-medium">Uploading...</span>
-                      </div>
-                    ) : previewImage ? (
+                    {previewImage ? (
                       <img
                         src={previewImage}
                         alt="Profile preview"
@@ -392,7 +347,7 @@ export default function CompleteProfile() {
                     )}
                   </div>
 
-                  {previewImage && !isUploadingImage && (
+                  {previewImage && (
                     <button
                       type="button"
                       onClick={handleRemoveImage}
@@ -527,10 +482,10 @@ export default function CompleteProfile() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isSubmitting || isUploadingImage}
+                disabled={isSubmitting}
                 className="w-full rounded-lg bg-[#90c639] px-6 py-3 font-semibold text-white transition-all hover:bg-[#7ab332] disabled:cursor-not-allowed disabled:bg-gray-400"
               >
-                {isSubmitting ? 'Saving Profile...' : isUploadingImage ? 'Uploading Image...' : 'Complete Profile'}
+                {isSubmitting ? 'Saving Profile...' : 'Complete Profile'}
               </button>
             </form>
           </div>
