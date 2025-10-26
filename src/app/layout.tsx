@@ -111,8 +111,8 @@ export const viewport: Viewport = {
   ],
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: 'cover',
 }
 
@@ -122,7 +122,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/Icon.png" />
         <link rel="apple-touch-icon" href="/Icon.png" />
@@ -149,55 +149,7 @@ export default function RootLayout({
             }),
           }}
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              // Check if app is installed (PWA) and create immediate splash
-              if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
-                // Create splash overlay immediately
-                const splashOverlay = document.createElement('div');
-                splashOverlay.className = 'pwa-splash-overlay';
-                splashOverlay.innerHTML = \`
-                  <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
-                    <div style="width: 96px; height: 96px; background: white; border-radius: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                      <img src="/Icon.png" alt="UoLink" style="width: 64px; height: 64px;" />
-                    </div>
-                    <div style="text-align: center;">
-                      <h1 style="font-size: 24px; font-weight: bold; color: white; margin: 0 0 8px 0;">UoLink</h1>
-                      <p style="color: rgba(251, 191, 36, 0.8); margin: 0;">University Notes & Study Hub</p>
-                    </div>
-                    <div style="display: flex; gap: 4px; margin-top: 32px;">
-                      <div style="width: 8px; height: 8px; background: white; border-radius: 50%; animation: bounce 1s infinite;"></div>
-                      <div style="width: 8px; height: 8px; background: white; border-radius: 50%; animation: bounce 1s infinite 0.1s;"></div>
-                      <div style="width: 8px; height: 8px; background: white; border-radius: 50%; animation: bounce 1s infinite 0.2s;"></div>
-                    </div>
-                  </div>
-                \`;
-                
-                // Add bounce animation
-                const style = document.createElement('style');
-                style.textContent = \`
-                  @keyframes bounce {
-                    0%, 80%, 100% { transform: translateY(0); }
-                    40% { transform: translateY(-10px); }
-                  }
-                \`;
-                document.head.appendChild(style);
-                document.body.appendChild(splashOverlay);
-                
-                // Remove splash after 2 seconds
-                setTimeout(() => {
-                  document.body.classList.add('splash-complete');
-                  setTimeout(() => {
-                    if (splashOverlay.parentNode) {
-                      splashOverlay.parentNode.removeChild(splashOverlay);
-                    }
-                  }, 500);
-                }, 2000);
-              }
-            `,
-          }}
-        />
+
       </head>
       <body className={inter.className}>
         <PWAProvider>

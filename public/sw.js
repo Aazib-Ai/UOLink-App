@@ -7,7 +7,9 @@ const STATIC_ASSETS = [
   '/',
   '/offline',
   '/manifest.json',
-  '/Icon.png'
+  '/Icon.png',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png'
 ];
 
 // Install event - cache static assets
@@ -17,10 +19,22 @@ self.addEventListener('install', (event) => {
     caches.open(STATIC_CACHE_NAME)
       .then((cache) => {
         console.log('Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
+        // Cache assets individually to handle failures gracefully
+        return Promise.allSettled(
+          STATIC_ASSETS.map(asset => 
+            cache.add(asset).catch(err => {
+              console.warn(`Failed to cache ${asset}:`, err);
+              return null;
+            })
+          )
+        );
       })
       .then(() => {
+        console.log('Service Worker installed successfully');
         return self.skipWaiting();
+      })
+      .catch(error => {
+        console.error('Service Worker installation failed:', error);
       })
   );
 });
@@ -131,14 +145,22 @@ self.addEventListener('fetch', (event) => {
   // Handle navigation requests
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      // Try network first with timeout
+      Promise.race([
+        fetch(request),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Network timeout')), 3000)
+        )
+      ])
         .then((response) => {
           // Cache successful page responses
-          const responseClone = response.clone();
-          caches.open(DYNAMIC_CACHE_NAME)
-            .then((cache) => {
-              cache.put(request, responseClone);
-            });
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(DYNAMIC_CACHE_NAME)
+              .then((cache) => {
+                cache.put(request, responseClone);
+              });
+          }
           return response;
         })
         .catch(() => {

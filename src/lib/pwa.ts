@@ -3,8 +3,18 @@
 export const registerServiceWorker = async () => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
         try {
+            // Wait for the page to load completely
+            await new Promise(resolve => {
+                if (document.readyState === 'complete') {
+                    resolve(true);
+                } else {
+                    window.addEventListener('load', () => resolve(true));
+                }
+            });
+
             const registration = await navigator.serviceWorker.register('/sw.js', {
                 scope: '/',
+                updateViaCache: 'none'
             });
 
             console.log('Service Worker registered successfully:', registration);
@@ -21,6 +31,11 @@ export const registerServiceWorker = async () => {
                     });
                 }
             });
+
+            // Check for waiting service worker
+            if (registration.waiting) {
+                showUpdateNotification();
+            }
 
             return registration;
         } catch (error) {

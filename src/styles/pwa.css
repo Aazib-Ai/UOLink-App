@@ -203,43 +203,56 @@
   padding-top: env(safe-area-inset-top, 0);
 }
 
-/* Initial splash screen - shows immediately for PWA */
-@media (display-mode: standalone) {
-  /* Hide all content initially */
+/* Simplified splash screen handling - prevent getting stuck */
+.pwa-splash-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #90c639 0%, #f59e0b 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Hide splash when complete */
+body.splash-complete .pwa-splash-overlay,
+body.pwa-loaded .pwa-splash-overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Always ensure content is visible - prevent getting stuck */
+body > div:not(.pwa-splash-overlay) {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Mobile-specific fixes */
+.mobile-device {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Force content visibility on mobile */
+@media screen and (max-width: 768px) {
   body > div:not(.pwa-splash-overlay) {
-    opacity: 0 !important;
-    visibility: hidden !important;
-  }
-  
-  /* Show splash overlay immediately */
-  .pwa-splash-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, #90c639 0%, #f59e0b 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 99999;
-    opacity: 1;
-    visibility: visible;
-  }
-  
-  /* After splash is complete, show content */
-  body.splash-complete > div:not(.pwa-splash-overlay) {
     opacity: 1 !important;
     visibility: visible !important;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
   }
-  
-  /* Hide splash when complete */
-  body.splash-complete .pwa-splash-overlay {
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.5s ease, visibility 0.5s ease;
-  }
+}
+
+/* Ensure content is always visible after ready state */
+body.pwa-ready > div:not(.pwa-splash-overlay),
+body.pwa-loaded > div:not(.pwa-splash-overlay) {
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* Regular splash screen for React control */

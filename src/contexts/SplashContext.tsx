@@ -11,28 +11,53 @@ interface SplashContextValue {
 const SplashContext = createContext<SplashContextValue | undefined>(undefined)
 
 export function SplashProvider({ children }: { children: ReactNode }) {
-  // Check if app is installed immediately
-  const isInstalled = typeof window !== 'undefined' ? isAppInstalled() : false
-  
-  // Initialize state based on whether app is installed
-  const [isSplashVisible, setIsSplashVisible] = useState(isInstalled)
-  const [isSplashComplete, setIsSplashComplete] = useState(!isInstalled)
+  // Start with consistent state to avoid hydration issues
+  const [isSplashVisible, setIsSplashVisible] = useState(false)
+  const [isSplashComplete, setIsSplashComplete] = useState(true)
+  const [isClient, setIsClient] = useState(false)
+
+  // Ensure we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
-    // Only run timer if splash should be visible
-    if (isInstalled && isSplashVisible) {
-      // Hide splash screen after 2 seconds
+    if (!isClient) return
+
+    // Check if app is installed only after client-side hydration
+    const isInstalled = isAppInstalled()
+
+    console.log('SplashProvider - App installed:', isInstalled);
+
+    // Only show splash for PWA mode, and with failsafe
+    if (isInstalled) {
+      setIsSplashVisible(true)
+      setIsSplashComplete(false)
+
+      // Hide splash screen after 1.5 seconds (shorter to prevent getting stuck)
       const timer = setTimeout(() => {
+        console.log('SplashProvider - Hiding splash screen');
         setIsSplashVisible(false)
         // Mark splash as complete after fade out animation
         setTimeout(() => {
           setIsSplashComplete(true)
-        }, 500) // Wait for fade out animation
-      }, 2000)
+          console.log('SplashProvider - Splash complete');
+        }, 300) // Shorter fade out
+      }, 1500) // Shorter display time
 
-      return () => clearTimeout(timer)
+      // Failsafe: Always hide splash after 3 seconds regardless
+      const failsafeTimer = setTimeout(() => {
+        console.log('SplashProvider - Failsafe triggered, forcing splash to hide');
+        setIsSplashVisible(false)
+        setIsSplashComplete(true)
+      }, 3000)
+
+      return () => {
+        clearTimeout(timer)
+        clearTimeout(failsafeTimer)
+      }
     }
-  }, [isInstalled, isSplashVisible])
+  }, [isClient])
 
   return (
     <SplashContext.Provider value={{ isSplashVisible, isSplashComplete }}>
