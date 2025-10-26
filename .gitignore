@@ -59,3 +59,99 @@ pnpm-debug.log*
 
 # Claude AI configuration
 /.claude/
+/.kiro/
+
+# ===================================================================
+# FIREBASE AND CLOUDFLARE CONFIGURATION FILES
+# ===================================================================
+
+# Firebase configuration files (may contain sensitive information)
+.firebase/
+firebase.json
+.firebaserc
+firestore.rules
+firestore.indexes.json
+storage.rules
+firestore-debug.log
+
+# Cloudflare R2 and storage configuration
+*r2-config*
+*storage-config*
+
+# Debug and log files
+*.log
+*-debug.log
+debug.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+temp/
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# ===================================================================
+# ADDITIONAL SECURITY EXCLUSIONS
+# ===================================================================
+
+# Private keys and certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+
+# API keys and secrets (in case they're accidentally created)
+api-keys.txt
+secrets.txt
+private-config.json
+
+# Build artifacts and dependency files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Local development files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE specific files
+.vscode/settings.json
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/shelf
+.idea/contentModel.xml
+.idea/dataSources.ids
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/gradle.xml
+.idea/libraries
+*.iml
+*.ipr
+
+# Test coverage and reports
+coverage/
+.nyc_output/
+junit.xml
+test-results/
+
+# Backup files
+*.bak
+*.backup
+*.old

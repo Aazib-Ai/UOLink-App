@@ -2,6 +2,10 @@ export interface UploadStatus {
     type: 'success' | 'error'
     message: string
     details?: string
+    action?: {
+        label: string
+        href: string
+    }
 }
 
 export interface ProfileData {

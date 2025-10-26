@@ -361,11 +361,30 @@ export function useUploadForm(enableDraftPersistence = false) {
             return
         }
 
+        // Check if all required profile fields are completed
+        const missingProfileFields = []
         if (!profileData.fullName.trim()) {
+            missingProfileFields.push('full name')
+        }
+        if (!profileData.major.trim()) {
+            missingProfileFields.push('major')
+        }
+        if (!profileData.semester.trim()) {
+            missingProfileFields.push('semester')
+        }
+        if (!profileData.section.trim()) {
+            missingProfileFields.push('section')
+        }
+
+        if (missingProfileFields.length > 0) {
             setStatus({
                 type: 'error',
-                message: 'Add your full name in the profile section before uploading.',
-                details: 'Use the profile editor to update your full name so classmates can recognize your contributions.',
+                message: 'Please complete your profile before uploading materials.',
+                details: `Missing information: ${missingProfileFields.join(', ')}. Go to your profile settings to add these details.`,
+                action: {
+                    label: 'Complete Profile',
+                    href: '/complete-profile'
+                }
             })
             return
         }

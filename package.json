@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "firebase:rules": "firebase deploy --only firestore:rules",
+    "firebase:deploy": "firebase deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.669.0",

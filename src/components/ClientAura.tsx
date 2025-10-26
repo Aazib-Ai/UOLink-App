@@ -1,28 +1,18 @@
 'use client'
 
-import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  AlertCircle,
-  ArrowLeft,
-  BarChart3,
-  ClipboardCheck,
-  Share2,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-  Trophy,
-  Upload
-} from 'lucide-react'
-import UploadModalLazy from './UploadModalLazy'
-import { AuraDashboardContent } from './profile/edit/AuraDashboard'
+import { ArrowLeft, Share2, Download, Trophy } from 'lucide-react'
+import AuraDashboard from './profile/edit/AuraDashboard'
 import { useAuraStats } from '@/hooks/useAuraStats'
 import { getAuraTier } from '@/lib/aura'
+import { useState } from 'react'
+import UploadModalLazy from './UploadModalLazy'
 
+// Client component for interactive aura functionality
 export default function ClientAura() {
   const router = useRouter()
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const { auraStats, loading, error } = useAuraStats()
+  const { auraStats, loading } = useAuraStats()
 
   const auraInfo = auraStats ? getAuraTier(auraStats.currentAura) : null
 
@@ -31,253 +21,236 @@ export default function ClientAura() {
   }
 
   const handleShare = async () => {
-    if (!auraStats) {
-      return
-    }
-
-    const shareMessage = `My ${auraInfo?.tier.name ?? 'UOLink'} aura is at ${auraStats.currentAura} after sharing ${auraStats.totalNotes} notes.`
-    const shareUrl = `${window.location.origin}/aura`
-
-    if (navigator.share) {
+    if (navigator.share && auraStats) {
       try {
         await navigator.share({
-          title: 'Check out my UOLink aura',
-          text: shareMessage,
-          url: shareUrl
+          title: `Check out my ${auraInfo?.tier.name} aura!`,
+          text: `I've got ${auraStats.currentAura} aura points from sharing ${auraStats.totalNotes} helpful notes! 🔥`,
+          url: window.location.origin + '/aura'
         })
-        return
-      } catch {
-        // fall back to clipboard
+      } catch (err) {
+        // Fallback to clipboard
+        navigator.clipboard.writeText(
+          `Check out my ${auraInfo?.tier.name} aura! I've got ${auraStats.currentAura} aura points from sharing ${auraStats.totalNotes} helpful notes! 🔥 ${window.location.origin}`
+        )
       }
     }
-
-    if (navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(`${shareMessage} ${shareUrl}`)
-        window.alert('Link copied to clipboard')
-        return
-      } catch {
-        // ignore clipboard failures
-      }
-    }
-
-    window.open(shareUrl, '_blank', 'noopener,noreferrer')
   }
-
-  const communityImpactScore = useMemo(() => {
-    if (!auraStats) return 0
-    const { totalUpvotes, totalSaves, totalNotes, totalDownvotes, reportImpact } = auraStats
-    return (
-      totalNotes * 10 +
-      totalUpvotes * 2 +
-      totalSaves * 5 -
-      totalDownvotes * 3 -
-      reportImpact.totalReports * 10
-    )
-  }, [auraStats])
-
-  const approvalRate = useMemo(() => {
-    if (!auraStats || auraStats.totalNotes === 0) return 0
-    return Math.round((auraStats.totalUpvotes / auraStats.totalNotes) * 100)
-  }, [auraStats])
-
-  const saveRate = useMemo(() => {
-    if (!auraStats || auraStats.totalNotes === 0) return 0
-    return Math.round((auraStats.totalSaves / auraStats.totalNotes) * 100)
-  }, [auraStats])
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      {/* Interactive Header Controls */}
+      <button
+        onClick={() => router.back()}
+        className="inline-flex items-center gap-2 rounded-full border border-lime-100 bg-white px-4 py-2 text-sm font-medium text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </button>
+
+      {!loading && auraStats && (
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-lime-100 bg-white px-4 py-2 text-sm font-medium text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
+            onClick={handleShare}
+            className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-6 py-3 text-sm font-semibold text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Back
+            <Share2 className="h-4 w-4" />
+            Share My Aura
           </button>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleShare}
-              disabled={!auraStats}
-              className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-5 py-2 text-sm font-semibold text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10] disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400"
-            >
-              <Share2 className="h-4 w-4" />
-              Share aura
-            </button>
-            <button
-              onClick={handleUploadClick}
-              className="inline-flex items-center gap-2 rounded-full bg-[#90c639] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6da428]"
-            >
-              <Upload className="h-4 w-4" />
-              Upload notes
-            </button>
-            <button
-              onClick={() => router.push('/leaderboard')}
-              className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-5 py-2 text-sm font-semibold text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
-            >
-              <Trophy className="h-4 w-4" />
-              Leaderboard
-            </button>
-          </div>
+          
+          <button
+            onClick={handleUploadClick}
+            className="inline-flex items-center gap-2 rounded-full bg-[#90c639] text-white px-6 py-3 text-sm font-semibold shadow-sm transition hover:bg-[#7ab332]"
+          >
+            <Download className="h-4 w-4 rotate-180" />
+            Upload Notes
+          </button>
+          
+          <button
+            onClick={() => router.push('/leaderboard')}
+            className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-6 py-3 text-sm font-semibold text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
+          >
+            <Trophy className="h-4 w-4" />
+            View Leaderboard
+          </button>
         </div>
+      )}
 
-        <AuraDashboardContent
-          auraStats={auraStats}
-          loading={loading}
-          error={error}
-          onUploadClick={handleUploadClick}
-          showFullFeatures
-        />
+      {/* Main Dashboard */}
+      <div className="mt-6">
+        <AuraDashboard onUploadClick={handleUploadClick} showFullFeatures={true} />
+      </div>
 
-        {!loading && auraStats && auraStats.totalNotes > 0 && (
-          <section className="space-y-4 rounded-3xl border border-lime-100 bg-white/95 p-6 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[#1f2f10]">Impact snapshot</h3>
-                <p className="text-sm text-[#4c5c3c]">
-                  How the community is reacting to your uploads across saves, upvotes, and reports.
-                </p>
+      {/* Additional Insights */}
+      {!loading && auraStats && auraStats.totalNotes > 0 && (
+        <div className="mt-6 rounded-3xl border border-lime-100 bg-white/90 p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-[#1f2f10] mb-4">
+            Your Impact Summary
+          </h3>
+          
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-[#f7fbe9] rounded-xl border border-lime-100">
+              <div className="text-2xl font-bold text-[#90c639]">
+                {Math.round((auraStats.totalUpvotes / Math.max(auraStats.totalNotes, 1)) * 100)}%
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-[#f7fbe9] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#334125]">
-                <BarChart3 className="h-4 w-4 text-[#90c639]" />
-                Community impact score
-                <span className="text-[#90c639]">{communityImpactScore}</span>
+              <div className="text-sm text-[#1f2f10]">Approval Rate</div>
+              <div className="text-xs text-[#5f7050] mt-1">
+                {auraStats.totalUpvotes} upvotes on {auraStats.totalNotes} notes
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-lime-100 bg-[#f7fbe9]/70 p-5">
-                <div className="text-xs font-semibold uppercase tracking-wide text-[#5f7050]">Approval rate</div>
-                <div className="mt-3 text-3xl font-semibold text-[#1f2f10]">{approvalRate}%</div>
-                <p className="mt-1 text-xs text-[#5f7050]">{auraStats.totalUpvotes} upvotes across {auraStats.totalNotes} notes</p>
+            <div className="text-center p-4 bg-[#f7fbe9] rounded-xl border border-lime-100">
+              <div className="text-2xl font-bold text-[#90c639]">
+                {Math.round((auraStats.totalSaves / Math.max(auraStats.totalNotes, 1)) * 100)}%
               </div>
-              <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-5">
-                <div className="text-xs font-semibold uppercase tracking-wide text-blue-900">Save rate</div>
-                <div className="mt-3 text-3xl font-semibold text-blue-900">{saveRate}%</div>
-                <p className="mt-1 text-xs text-blue-900/70">{auraStats.totalSaves} saves so far</p>
+              <div className="text-sm text-[#1f2f10]">Save Rate</div>
+              <div className="text-xs text-[#5f7050] mt-1">
+                {auraStats.totalSaves} saves on {auraStats.totalNotes} notes
               </div>
-              <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
-                <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">Credibility</div>
-                <div className="mt-3 text-3xl font-semibold text-amber-900">
-                  {auraStats.averageCredibility > 0 ? `+${auraStats.averageCredibility}` : auraStats.averageCredibility}
+            </div>
+
+            <div className="text-center p-4 bg-[#f7fbe9] rounded-xl border border-lime-100">
+              <div className="text-2xl font-bold text-[#90c639]">
+                {auraStats.averageCredibility > 0 ? '+' : ''}{auraStats.averageCredibility}
+              </div>
+              <div className="text-sm text-[#1f2f10]">Avg Credibility</div>
+              <div className="text-xs text-[#5f7050] mt-1">
+                Per note quality score
+              </div>
+            </div>
+
+            <div className="text-center p-4 bg-red-50 rounded-xl border border-red-100">
+              <div className="text-2xl font-bold text-red-600">
+                {auraStats.reportImpact.totalReports}
+              </div>
+              <div className="text-sm text-red-800">Total Reports</div>
+              <div className="text-xs text-red-600 mt-1">
+                -{auraStats.reportImpact.auraLostToReports} aura lost
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 p-4 bg-[#f7fbe9] rounded-xl border border-lime-100">
+            <div className="text-center">
+              <div className="text-sm text-[#5f7050] font-medium mb-1">
+                Community Impact Score
+              </div>
+              <div className="text-3xl font-bold text-[#90c639]">
+                {Math.round(
+                  (auraStats.totalUpvotes * 2) + 
+                  (auraStats.totalSaves * 5) + 
+                  (auraStats.totalNotes * 10) - 
+                  (auraStats.totalDownvotes * 3) -
+                  (auraStats.reportImpact.totalReports * 10)
+                )}
+              </div>
+              <div className="text-xs text-[#5f7050] mt-1">
+                Total positive impact on the community
+              </div>
+              <div className="text-xs text-[#7a8f5d] mt-2 max-w-md mx-auto">
+                Notes: +10 • Upvotes: +2 • Saves: +5 • Downvotes: -3 • Reports: -10
+              </div>
+            </div>
+          </div>
+
+          {/* Report Impact Section */}
+          {auraStats.reportImpact.totalReports > 0 ? (
+            <div className="mt-6 p-6 bg-red-50 rounded-xl border border-red-100">
+              <h4 className="text-lg font-semibold text-red-800 mb-4 flex items-center gap-2">
+                <span className="text-red-600">⚠️</span>
+                Report Impact Analysis
+              </h4>
+              
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-lg border border-red-200">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600 mb-1">
+                      {auraStats.reportImpact.totalReports}
+                    </div>
+                    <div className="text-sm text-red-800 font-medium">Total Reports Received</div>
+                    <div className="text-xs text-red-600 mt-1">
+                      Across all your notes
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-amber-900/70">Average per note score</p>
-              </div>
-            </div>
 
-            <div className="rounded-2xl border border-lime-100 bg-[#f7fbe9]/80 px-5 py-4 text-sm text-[#334125]">
-              <p className="font-semibold text-[#1f2f10]">What powers the score?</p>
-              <p className="mt-1 text-xs text-[#5f7050]">
-                Notes (+10) • Upvotes (+2) • Saves (+5) • Downvotes (-3) • Reports (-10)
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {auraStats.reportImpact.totalReports > 0 ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <ShieldAlert className="h-5 w-5" />
-                    <h4 className="text-base font-semibold">Reports affecting aura</h4>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-4 text-sm text-red-800">
-                    <div className="rounded-xl border border-red-200 bg-white px-4 py-3 text-center">
-                      <p className="text-2xl font-bold text-red-600">{auraStats.reportImpact.totalReports}</p>
-                      <p className="mt-1 text-xs">Total reports received</p>
+                <div className="bg-white p-4 rounded-lg border border-red-200">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600 mb-1">
+                      -{auraStats.reportImpact.auraLostToReports}
                     </div>
-                    <div className="rounded-xl border border-red-200 bg-white px-4 py-3 text-center">
-                      <p className="text-2xl font-bold text-red-600">
-                        -{auraStats.reportImpact.auraLostToReports}
-                      </p>
-                      <p className="mt-1 text-xs">Aura lost to reports</p>
+                    <div className="text-sm text-red-800 font-medium">Aura Lost to Reports</div>
+                    <div className="text-xs text-red-600 mt-1">
+                      10 aura per report
                     </div>
                   </div>
-                  {auraStats.reportImpact.mostReportedNote && (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm text-red-800">
-                      <p className="font-semibold">Most reported note</p>
-                      <div className="mt-1 flex items-center justify-between text-sm">
-                        <span>{auraStats.reportImpact.mostReportedNote.subject}</span>
-                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-600">
-                          {auraStats.reportImpact.mostReportedNote.reportCount} reports
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <p className="mt-3 flex items-center gap-2 text-xs text-red-700">
-                    <AlertCircle className="h-4 w-4" />
-                    Review flagged uploads, update any mistakes, and re-share to regain trust.
-                  </p>
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 text-emerald-800">
-                    <ShieldCheck className="h-5 w-5" />
-                    <h4 className="text-base font-semibold">Clean reputation</h4>
-                  </div>
-                  <p className="mt-3 text-sm text-emerald-900">
-                    Excellent work! None of your uploads have been reported. Keep shipping accurate, high-value notes to
-                    maintain the streak.
-                  </p>
-                  <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-medium text-emerald-800 shadow-sm">
-                    <ClipboardCheck className="h-4 w-4" />
-                    Consistency keeps aura intact
+              </div>
+
+              {auraStats.reportImpact.mostReportedNote && (
+                <div className="mt-4 p-4 bg-white rounded-lg border border-red-200">
+                  <div className="text-sm text-red-800 font-medium mb-2">Most Reported Note:</div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-red-700 font-medium">
+                      {auraStats.reportImpact.mostReportedNote.subject}
+                    </span>
+                    <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold">
+                      {auraStats.reportImpact.mostReportedNote.reportCount} reports
+                    </span>
                   </div>
                 </div>
               )}
 
-              <div className="rounded-2xl border border-lime-100 bg-white/95 p-6 shadow-sm">
-                <div className="flex items-center gap-2 text-[#334125]">
-                  <Sparkles className="h-5 w-5 text-[#90c639]" />
-                  <h4 className="text-base font-semibold">Share wins</h4>
+              <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="text-xs text-amber-800">
+                  <strong>💡 Tip:</strong> Reports can impact your aura negatively. Focus on uploading high-quality, 
+                  relevant content to maintain a positive reputation. Each report costs 10 aura points.
                 </div>
-                <p className="mt-3 text-sm text-[#4c5c3c]">
-                  Celebrate milestones with your study group. Spotlight the notes with the highest saves or credibility
-                  to encourage more collaboration.
-                </p>
-                <button
-                  onClick={handleShare}
-                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#90c639] px-4 py-2 text-sm font-semibold text-[#1f2f10] transition hover:bg-[#f7fbe9]"
-                >
-                  <Share2 className="h-4 w-4" />
-                  Share your progress
-                </button>
               </div>
             </div>
-          </section>
-        )}
-
-        {!loading && auraStats && auraStats.totalNotes === 0 && (
-          <section className="rounded-3xl border border-lime-100 bg-white/95 p-10 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#f7fbe9] text-[#90c639]">
-              <Sparkles className="h-8 w-8" />
+          ) : auraStats.totalNotes > 0 && (
+            <div className="mt-6 p-6 bg-green-50 rounded-xl border border-green-100">
+              <h4 className="text-lg font-semibold text-green-800 mb-2 flex items-center gap-2">
+                <span className="text-green-600">✅</span>
+                Clean Record
+              </h4>
+              <p className="text-green-700 text-sm">
+                Great job! Your notes haven't received any reports. Keep up the excellent work by 
+                sharing high-quality, relevant content that helps your classmates succeed.
+              </p>
+              <div className="mt-3 text-xs text-green-600 bg-green-100 p-2 rounded-lg">
+                <strong>Bonus:</strong> Maintaining a clean record helps preserve your aura and builds trust in the community.
+              </div>
             </div>
-            <h3 className="mt-6 text-3xl font-semibold text-[#1f2f10]">Ready to build your aura?</h3>
-            <p className="mt-3 text-sm text-[#4c5c3c]">
-              Upload your first note to kick off your reputation. Quality uploads earn aura, help classmates, and unlock
-              cosmetic badges across UOLink.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={handleUploadClick}
-                className="inline-flex items-center gap-2 rounded-full bg-[#90c639] px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#6da428]"
-              >
-                <Upload className="h-5 w-5" />
-                Upload your first note
-              </button>
-              <button
-                onClick={() => router.push('/about')}
-                className="inline-flex items-center gap-2 rounded-full border border-lime-200 bg-white px-6 py-3 text-base font-semibold text-[#334125] shadow-sm transition hover:border-[#90c639] hover:text-[#1f2f10]"
-              >
-                Learn how aura works
-              </button>
-            </div>
-          </section>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      <UploadModalLazy isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
+      {/* Call to Action for New Users */}
+      {!loading && auraStats && auraStats.totalNotes === 0 && (
+        <div className="mt-6 rounded-3xl border border-lime-100 bg-white/90 p-8 shadow-sm text-center">
+          <div className="text-6xl mb-4">🚀</div>
+          <h3 className="text-2xl font-semibold text-[#1f2f10] mb-2">
+            Ready to Build Your Aura?
+          </h3>
+          <p className="text-[#4c5c3c] mb-6 max-w-md mx-auto">
+            You haven't uploaded any notes yet! Start sharing your knowledge 
+            and watch your aura grow as classmates find your content helpful.
+          </p>
+          <button
+            onClick={handleUploadClick}
+            className="inline-flex items-center gap-2 rounded-full bg-[#90c639] text-white px-8 py-4 text-lg font-semibold shadow-sm transition hover:bg-[#7ab332]"
+          >
+            Upload Your First Note
+          </button>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      <UploadModalLazy
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+      />
     </>
   )
 }

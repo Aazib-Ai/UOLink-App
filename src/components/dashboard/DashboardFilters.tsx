@@ -89,8 +89,8 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
       materialTypeFilter === 'assignment'
         ? 'Select Assignment'
         : materialTypeFilter === 'quiz'
-        ? 'Select Quiz'
-        : 'Select Number'
+          ? 'Select Quiz'
+          : 'Select Number'
     return [sequenceLabel, ...sequences]
   })()
 
@@ -101,10 +101,10 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
   const materialSequencePlaceholder = materialSequenceFilter
     ? materialSequenceFilter
     : materialTypeFilter === 'assignment'
-    ? 'Assignment Number'
-    : materialTypeFilter === 'quiz'
-    ? 'Quiz Number'
-    : 'Select Number'
+      ? 'Assignment Number'
+      : materialTypeFilter === 'quiz'
+        ? 'Quiz Number'
+        : 'Select Number'
 
 
 

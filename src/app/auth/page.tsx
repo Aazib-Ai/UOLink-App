@@ -64,13 +64,23 @@ export default function AuthPage() {
       setSubmitting(true)
       await signInWithGoogle()
 
-      // For Google Sign-In, we need to determine if this is a new user or existing user
-      // Since we can't easily determine this from the auth context, we'll redirect to dashboard
-      // New users can navigate to profile edit from the dashboard if needed
-      setStatus('Signed in with Google successfully. Redirecting to dashboard...')
-      router.push('/')
-    } catch {
-      setStatus(null)
+      // Check if user has completed their profile
+      setStatus('Checking profile status...')
+
+      // Import the function to check profile completion
+      const { checkProfileCompletion } = await import('@/lib/profile/completion')
+      const isProfileComplete = await checkProfileCompletion()
+
+      if (isProfileComplete) {
+        setStatus('Signed in with Google successfully. Redirecting to dashboard...')
+        router.push('/')
+      } else {
+        setStatus('Welcome! Please complete your profile to continue.')
+        router.push('/complete-profile')
+      }
+    } catch (err) {
+      console.error('Google sign-in error:', err)
+      setStatus(typeof err === 'string' ? err : null)
     } finally {
       setSubmitting(false)
     }

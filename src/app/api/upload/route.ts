@@ -137,6 +137,16 @@ export async function POST(request: NextRequest) {
     const profileRef = db.collection('profiles').doc(decoded.uid)
     const profileSnapshot = await profileRef.get()
     const profileData = profileSnapshot.exists ? profileSnapshot.data() ?? {} : {}
+
+    // Check if profile is completed
+    if (!profileSnapshot.exists || profileData.profileCompleted !== true) {
+      return NextResponse.json({
+        error: 'Please complete your profile before uploading materials. You need to provide your full name, major, semester, and section.',
+        code: 'PROFILE_INCOMPLETE',
+        redirectTo: '/complete-profile'
+      }, { status: 403 })
+    }
+
     const profileFullName =
       typeof profileData.fullName === 'string' ? profileData.fullName.trim() : ''
     const profileUsername =
