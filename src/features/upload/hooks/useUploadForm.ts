@@ -460,6 +460,11 @@ export function useUploadForm(enableDraftPersistence = false) {
 
         try {
             setSubmitting(true)
+
+            // Log file size for debugging
+            const fileSizeMB = (formData.file.size / (1024 * 1024)).toFixed(2)
+            console.log(`[useUploadForm] Starting upload of ${fileSizeMB}MB file`)
+
             const token = await user.getIdToken()
             const formDataToSubmit = new FormData()
             formDataToSubmit.append('file', formData.file)
@@ -475,6 +480,8 @@ export function useUploadForm(enableDraftPersistence = false) {
                 formDataToSubmit.append('materialSequence', formData.materialSequence.trim())
             }
 
+            console.log(`[useUploadForm] Sending request to /api/upload`)
+
             const response = await fetch('/api/upload', {
                 method: 'POST',
                 headers: {
@@ -483,10 +490,23 @@ export function useUploadForm(enableDraftPersistence = false) {
                 body: formDataToSubmit,
             })
 
+            console.log(`[useUploadForm] Received response: ${response.status} ${response.statusText}`)
+
             const payload = await response.json()
 
             if (!response.ok) {
-                throw new Error(payload.error || 'Upload failed. Please try again.')
+                // Handle specific error cases
+                if (response.status === 413) {
+                    throw new Error('File is too large. Please upload a file smaller than 25MB.')
+                }
+                if (response.status === 408) {
+                    throw new Error('Upload timeout. Please try uploading a smaller file or check your connection.')
+                }
+                if (response.status === 502 || response.status === 504) {
+                    throw new Error('Server timeout. Please try again with a smaller file.')
+                }
+
+                throw new Error(payload.error || payload.details || 'Upload failed. Please try again.')
             }
 
             setStatus({

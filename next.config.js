@@ -28,7 +28,9 @@ const nextConfig = {
   serverExternalPackages: ['firebase-admin'],
   // PWA Configuration
   experimental: {
-    webVitalsAttribution: ['CLS', 'LCP']
+    webVitalsAttribution: ['CLS', 'LCP'],
+    // Enable large request body handling for App Router
+    serverComponentsExternalPackages: ['firebase-admin']
   },
   headers: async () => {
     return [
@@ -56,6 +58,7 @@ const nextConfig = {
       },
     ];
   },
+
   webpack: (config) => {
     config.resolve = config.resolve || {}
     config.resolve.fallback = {

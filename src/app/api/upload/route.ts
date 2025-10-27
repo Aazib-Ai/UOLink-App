@@ -13,6 +13,12 @@ import {
 
 export const runtime = 'nodejs'
 
+// Configure maximum request body size for large file uploads (25MB)
+export const maxDuration = 60 // 60 seconds timeout for large uploads
+
+// This is the key fix - Next.js 15 App Router needs this export
+export const dynamic = 'force-dynamic'
+
 const allowedEmailPattern = /^\d{8}@student\.uol\.edu\.pk$/i
 
 const slugify = (value: string) =>
@@ -35,7 +41,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only university accounts can upload materials.' }, { status: 403 })
     }
 
-    const formData = await request.formData()
+    // Handle large file uploads by processing formData with proper error handling
+    let formData: FormData
+    try {
+      // Log request details for debugging
+      console.log('[api/upload] Processing upload request, Content-Length:', request.headers.get('content-length'))
+
+      formData = await request.formData()
+
+      console.log('[api/upload] Successfully parsed form data')
+    } catch (error) {
+      console.error('[api/upload] Failed to parse form data:', error)
+
+      // Check for specific error types
+      if (error instanceof Error) {
+        if (error.message.includes('size') || error.message.includes('limit') || error.message.includes('413')) {
+          return NextResponse.json({
+            error: 'File is too large. Please upload a file smaller than 25MB.',
+            details: 'The server rejected the request due to file size limits.'
+          }, { status: 413 })
+        }
+
+        if (error.message.includes('timeout')) {
+          return NextResponse.json({
+            error: 'Upload timeout. Please try uploading a smaller file or check your connection.',
+            details: 'The upload took too long to complete.'
+          }, { status: 408 })
+        }
+      }
+
+      return NextResponse.json({
+        error: 'Failed to process upload. Please try again.',
+        details: error instanceof Error ? error.message : 'Unknown error occurred'
+      }, { status: 400 })
+    }
     const file = formData.get('file') as File | null
 
     if (!file) {
@@ -64,7 +103,7 @@ export async function POST(request: NextRequest) {
     const normalizedContentType =
       file.type || mimeMatch?.mimeTypes[0] || extensionMatch?.mimeTypes[0] || 'application/octet-stream'
 
-    const MAX_FILE_BYTES = 25 * 1024 * 1024
+    const MAX_FILE_BYTES = (parseInt(process.env.MAX_UPLOAD_SIZE_MB || '25') * 1024 * 1024)
     if (file.size > MAX_FILE_BYTES) {
       return NextResponse.json({ error: 'File exceeds the 25 MB limit.' }, { status: 400 })
     }
@@ -261,8 +300,8 @@ export async function DELETE(request: NextRequest) {
     const createdByEmail = metadataCreatedBy
       ? metadataCreatedBy.toLowerCase()
       : dataCreatedBy
-      ? dataCreatedBy.toLowerCase()
-      : ''
+        ? dataCreatedBy.toLowerCase()
+        : ''
 
     const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.toLowerCase() ?? ''
     const currentEmail = decoded.email?.toLowerCase() ?? ''
