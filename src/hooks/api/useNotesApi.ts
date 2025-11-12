@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import {
-    addNote,
     getNotes,
     getNotesWithPagination,
     getInitialNotes,
@@ -8,9 +7,9 @@ import {
     getFilterOptions,
     getTotalNotesCount,
     getAllNotesWithFilters,
-    voteOnNote,
-    toggleSaveNote,
 } from '../../lib/firebase/notes';
+import { voteOnNote, toggleSaveNote } from '@/lib/api/notes';
+import { parseApiError, userFriendlyMessage } from '@/lib/api/client';
 import { VoteOnNoteResult, ToggleSaveNoteResult, NotesQueryResult } from '../../lib/data/types';
 
 export const useNotesApi = () => {
@@ -24,9 +23,14 @@ export const useNotesApi = () => {
             const result = await asyncFn();
             return result;
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+            const parsed = parseApiError(err);
+            const errorMessage = userFriendlyMessage(parsed);
             setError(errorMessage);
-            console.error('Notes API Error:', err);
+            console.error('Notes API Error:', {
+                original: err,
+                parsed,
+                message: errorMessage,
+            });
             return null;
         } finally {
             setLoading(false);
@@ -36,9 +40,6 @@ export const useNotesApi = () => {
     const api = {
         loading,
         error,
-
-        addNote: useCallback((noteData: any) =>
-            handleAsync(() => addNote(noteData)), [handleAsync]),
 
         getNotes: useCallback(() =>
             handleAsync(() => getNotes()), [handleAsync]),

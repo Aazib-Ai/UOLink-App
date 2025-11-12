@@ -24,6 +24,9 @@ import { getUserProfile } from './profiles';
 import { usernameCache } from '../cache/username-cache';
 import type { UserProfile } from '../data/types';
 import { syncUserProfileReferences } from './profile-sync';
+import { isReservedUsername, normalizeUsernameInput } from '@/lib/username/validation';
+import { UsernameError } from '@/lib/username/errors';
+import { toPublicProfile } from '@/lib/security/sanitization';
 
 // Username service interface
 export interface UsernameService {
@@ -39,7 +42,7 @@ export interface UsernameService {
  */
 export async function checkAvailability(username: string): Promise<boolean> {
     try {
-        const normalizedUsername = username.toLowerCase().trim();
+        const normalizedUsername = normalizeUsernameInput(username).toLowerCase();
 
         // Check if username exists in usernames collection
         const usernameRecord = await getUsernameRecord(normalizedUsername);
@@ -56,7 +59,7 @@ export async function checkAvailability(username: string): Promise<boolean> {
         return true;
     } catch (error) {
         console.error('Error checking username availability:', error);
-        throw new Error('Failed to check username availability');
+        throw new UsernameError('SERVER_ERROR', 'Failed to check username availability');
     }
 }
 
@@ -65,7 +68,12 @@ export async function checkAvailability(username: string): Promise<boolean> {
  */
 export async function reserveUsername(userId: string, username: string): Promise<void> {
     try {
-        const normalizedUsername = username.toLowerCase().trim();
+        const normalizedUsername = normalizeUsernameInput(username).toLowerCase();
+
+        // Validate against reserved usernames before starting transaction
+        if (isReservedUsername(normalizedUsername)) {
+            throw new UsernameError('RESERVED', 'Username is reserved');
+        }
 
         // Use transaction to ensure atomicity
         await runTransaction(db, async (transaction) => {
@@ -76,16 +84,24 @@ export async function reserveUsername(userId: string, username: string): Promise
             if (usernameDoc.exists()) {
                 const existingRecord = usernameDoc.data() as UsernameRecord;
                 if (existingRecord.isActive) {
-                    throw new Error('Username is already taken');
+                    throw new UsernameError('USERNAME_TAKEN', 'Username is already taken');
                 }
             }
 
-            // Check if user already has an active username
-            const existingUsernames = await getUserActiveUsername(userId);
-            if (existingUsernames.length > 0) {
-                // Deactivate existing username
-                const oldUsernameRef = doc(usernamesCollection, existingUsernames[0].id);
-                transaction.update(oldUsernameRef, {
+            // Check if user already has an active username (read inside transaction)
+            const activeQuery = query(
+                usernamesCollection,
+                where('userId', '==', userId),
+                where('isActive', '==', true)
+            );
+            const activeSnapshot = await getDocs(activeQuery);
+            if (!activeSnapshot.empty) {
+                const oldDoc = activeSnapshot.docs[0];
+                const oldRef = doc(usernamesCollection, oldDoc.id);
+                // Read old username doc inside the transaction to include it in the read set
+                await transaction.get(oldRef);
+
+                transaction.update(oldRef, {
                     isActive: false,
                     updatedAt: Timestamp.now()
                 });
@@ -95,8 +111,8 @@ export async function reserveUsername(userId: string, username: string): Promise
                 transaction.set(historyRef, {
                     id: historyRef.id,
                     userId,
-                    oldUsername: existingUsernames[0].displayUsername,
-                    oldUsernameLower: existingUsernames[0].displayUsername.toLowerCase(),
+                    oldUsername: (oldDoc.data().displayUsername || normalizedUsername),
+                    oldUsernameLower: (oldDoc.data().displayUsername || normalizedUsername).toLowerCase(),
                     newUsername: username,
                     changedAt: Timestamp.now(),
                     aliasExpiresAt: Timestamp.fromDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)) // 90 days
@@ -114,12 +130,16 @@ export async function reserveUsername(userId: string, username: string): Promise
                 isActive: true
             });
         });
+
+        // Invalidate caches after successful reservation
+        usernameCache.invalidate(normalizedUsername);
+        usernameCache.invalidateByUserId(userId);
     } catch (error) {
         console.error('Error reserving username:', error);
-        if (error instanceof Error) {
+        if (error instanceof UsernameError) {
             throw error;
         }
-        throw new Error('Failed to reserve username');
+        throw new UsernameError('SERVER_ERROR', 'Failed to reserve username');
     }
 }
 
@@ -128,12 +148,12 @@ export async function reserveUsername(userId: string, username: string): Promise
  */
 export async function getUserByUsername(username: string): Promise<UserProfile | null> {
     try {
-        const normalizedUsername = username.toLowerCase().trim();
+        const normalizedUsername = normalizeUsernameInput(username).toLowerCase();
 
         // Check cache first
         const cachedProfile = usernameCache.get(normalizedUsername);
         if (cachedProfile !== undefined) {
-            return cachedProfile;
+            return cachedProfile as UserProfile | null;
         }
 
         // Get username record from database
@@ -146,9 +166,12 @@ export async function getUserByUsername(username: string): Promise<UserProfile |
                 // Redirect to current username
                 const currentUsernameRecord = await getUsernameRecord(aliasRecord.newUsername.toLowerCase());
                 if (currentUsernameRecord && currentUsernameRecord.isActive) {
-                    const profile = await getUserProfile(currentUsernameRecord.userId);
+                    const raw = await getUserProfile(currentUsernameRecord.userId);
+                    const profile = raw ? (toPublicProfile(raw) as UserProfile) : null;
                     // Cache the result for both the alias and current username
-                    usernameCache.set(normalizedUsername, profile);
+                    const aliasExpiryMs = aliasRecord.aliasExpiresAt?.toMillis?.()
+                        ?? (aliasRecord.aliasExpiresAt instanceof Date ? aliasRecord.aliasExpiresAt.getTime() : null);
+                    usernameCache.set(normalizedUsername, profile, { expiresAt: aliasExpiryMs ?? null });
                     if (profile?.username) {
                         usernameCache.set(profile.username, profile);
                     }
@@ -162,7 +185,8 @@ export async function getUserByUsername(username: string): Promise<UserProfile |
         }
 
         // Get user profile
-        const profile = await getUserProfile(usernameRecord.userId);
+        const raw = await getUserProfile(usernameRecord.userId);
+        const profile = raw ? (toPublicProfile(raw) as UserProfile) : null;
 
         // Cache the result
         usernameCache.set(normalizedUsername, profile);
@@ -170,7 +194,7 @@ export async function getUserByUsername(username: string): Promise<UserProfile |
         return profile;
     } catch (error) {
         console.error('Error getting user by username:', error);
-        throw new Error('Failed to get user by username');
+        throw new UsernameError('SERVER_ERROR', 'Failed to get user by username');
     }
 }
 
@@ -179,7 +203,7 @@ export async function getUserByUsername(username: string): Promise<UserProfile |
  */
 export async function generateSuggestions(baseUsername: string): Promise<string[]> {
     try {
-        const normalizedBase = baseUsername.toLowerCase().trim();
+        const normalizedBase = normalizeUsernameInput(baseUsername).toLowerCase();
         const suggestions: string[] = [];
 
         // Generate variations
@@ -195,23 +219,35 @@ export async function generateSuggestions(baseUsername: string): Promise<string[
             `${normalizedBase}-dev`
         ];
 
-        // Check availability for each variation
-        for (const variation of variations) {
-            const isAvailable = await checkAvailability(variation);
-            if (isAvailable) {
-                suggestions.push(variation);
-            }
+        // Filter out reserved upfront
+        const nonReserved = variations.filter((v) => !isReservedUsername(v));
 
-            // Return up to 5 suggestions
-            if (suggestions.length >= 5) {
-                break;
+        // Batch query existing username records using 'id' field
+        // Firestore 'in' operator supports up to 10 values; variations <= 9 here
+        if (nonReserved.length > 0) {
+            const snapshot = await getDocs(query(
+                usernamesCollection,
+                where('id', 'in', nonReserved)
+            ));
+            const takenActive = new Set(
+                snapshot.docs
+                    .map((d) => d.data() as UsernameRecord)
+                    .filter((r) => r.isActive)
+                    .map((r) => r.id.toLowerCase())
+            );
+
+            for (const v of nonReserved) {
+                if (!takenActive.has(v)) {
+                    suggestions.push(v);
+                }
+                if (suggestions.length >= 5) break;
             }
         }
 
         return suggestions;
     } catch (error) {
         console.error('Error generating username suggestions:', error);
-        throw new Error('Failed to generate username suggestions');
+        throw new UsernameError('SERVER_ERROR', 'Failed to generate username suggestions');
     }
 }
 
@@ -228,7 +264,7 @@ export async function changeUsername(userId: string, newUsername: string): Promi
 
             if (timeSinceLastChange < cooldownPeriod) {
                 const remainingDays = Math.ceil((cooldownPeriod - timeSinceLastChange) / (24 * 60 * 60 * 1000));
-                throw new Error(`Username can only be changed once every 30 days. Please wait ${remainingDays} more days.`);
+                throw new UsernameError('COOLDOWN', `Username can only be changed once every 30 days. Please wait ${remainingDays} more days.`);
             }
         }
 
@@ -249,10 +285,10 @@ export async function changeUsername(userId: string, newUsername: string): Promi
         });
     } catch (error) {
         console.error('Error changing username:', error);
-        if (error instanceof Error) {
+        if (error instanceof UsernameError) {
             throw error;
         }
-        throw new Error('Failed to change username');
+        throw new UsernameError('SERVER_ERROR', 'Failed to change username');
     }
 }
 
@@ -273,7 +309,7 @@ async function getUserActiveUsername(userId: string): Promise<UsernameRecord[]> 
         return querySnapshot.docs.map(doc => doc.data() as UsernameRecord);
     } catch (error) {
         console.error('Error getting user active username:', error);
-        return [];
+        throw new UsernameError('SERVER_ERROR', 'Failed to fetch active username');
     }
 }
 
@@ -336,7 +372,7 @@ async function checkUsernameAlias(normalizedInput: string, rawInput?: string): P
         return activeRecord;
     } catch (error) {
         console.error('Error checking username alias:', error);
-        return null;
+        throw new UsernameError('SERVER_ERROR', 'Failed to check username alias');
     }
 }
 
@@ -367,26 +403,11 @@ async function getLastUsernameChange(userId: string): Promise<any | null> {
         return lastChange;
     } catch (error) {
         console.error('Error getting last username change:', error);
-        return null;
+        throw new UsernameError('SERVER_ERROR', 'Failed to get last username change');
     }
 }
 
-/**
- * Check if username is reserved (system usernames)
- */
-function isReservedUsername(username: string): boolean {
-    const reservedUsernames = [
-        'admin', 'administrator', 'root', 'system', 'api', 'www', 'mail', 'email',
-        'support', 'help', 'info', 'contact', 'about', 'terms', 'privacy',
-        'security', 'login', 'register', 'signup', 'signin', 'auth', 'oauth',
-        'profile', 'profiles', 'user', 'users', 'account', 'accounts',
-        'dashboard', 'settings', 'config', 'configuration', 'test', 'testing',
-        'dev', 'development', 'staging', 'production', 'prod', 'beta', 'alpha',
-        'null', 'undefined', 'true', 'false', 'anonymous', 'guest'
-    ];
-
-    return reservedUsernames.includes(username.toLowerCase());
-}
+// Use isReservedUsername from validation module for consistency
 
 // Export the service interface implementation
 export const usernameService: UsernameService = {

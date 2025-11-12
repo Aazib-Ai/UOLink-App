@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Flag, AlertTriangle, X, Shield, LogIn, RotateCcw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { reportContent, getReportStatus, undoReport } from '@/lib/firebase'
+import { reportNote, getReportStatus, undoReport } from '@/lib/api/reports'
 import Link from 'next/link'
 
 interface ReportButtonProps {
@@ -116,7 +116,7 @@ export default function ReportButton({
     setError(null)
 
     try {
-      await reportContent(noteId, selectedReason, description.trim())
+      await reportNote(noteId, selectedReason, description.trim())
       
       // Get updated report status from server
       const updatedStatus = await getReportStatus(noteId)

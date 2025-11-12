@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toggleSaveNoteOptimized } from '@/lib/firebase/notes-optimized'
-import { auth, db } from '@/lib/firebase'
-import { collection, getDocs } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
+import { fetchSavedNoteIdsEfficient } from '@/lib/firebase/saved-notes-index'
 
 export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: Record<string, any>) => void) => {
     const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>({})
     const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set())
     const [isInitialLoading, setIsInitialLoading] = useState(true)
 
-    // Fetch saved notes on mount - only once
+    // Fetch saved notes on mount - single read via index doc
     useEffect(() => {
         let isMounted = true
 
@@ -20,15 +20,14 @@ export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: R
 
             try {
                 const userId = auth.currentUser.uid
-                const savedNotesRef = collection(db, "users", userId, "savedNotes")
-                const savedNotesSnapshot = await getDocs(savedNotesRef)
+                const ids = await fetchSavedNoteIdsEfficient(userId)
 
                 if (!isMounted) return
 
                 const saved: Record<string, boolean> = {}
-                savedNotesSnapshot.forEach((doc) => {
-                    saved[doc.id] = true
-                })
+                for (const id of ids) {
+                    saved[id] = true
+                }
 
                 setSavedNotes(saved)
             } catch (error) {

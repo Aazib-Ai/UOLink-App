@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { headers as nextHeaders } from 'next/headers'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import '@/styles/pwa.css'
@@ -116,11 +117,12 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const nonce = (await nextHeaders()).get('x-csp-nonce') || undefined
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -133,6 +135,7 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#3b82f6" />
         <meta name="msapplication-tap-highlight" content="no" />
         <script
+          nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({

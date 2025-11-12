@@ -61,8 +61,16 @@ const calculateRelevanceScore = (note: Note, userProfile: any): { score: number;
     }
 
     // Temporal relevance - newer notes get slight boost
-    const daysSinceUpload = note.uploadedAt ?
-        (Date.now() - (note.uploadedAt instanceof Date ? note.uploadedAt.getTime() : note.uploadedAt.toDate().getTime())) / (1000 * 60 * 60 * 24) : 999;
+    const uploadedAtMs = note.uploadedAt
+        ? (typeof (note.uploadedAt as any).toMillis === 'function'
+            ? (note.uploadedAt as any).toMillis()
+            : (note.uploadedAt instanceof Date
+                ? note.uploadedAt.getTime()
+                : 0))
+        : 0;
+    const daysSinceUpload = uploadedAtMs > 0
+        ? (Date.now() - uploadedAtMs) / (1000 * 60 * 60 * 24)
+        : 999;
 
     if (daysSinceUpload < 7) {
         score += 30;

@@ -1,0 +1,6 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "[husky] Running security pre-commit checks..."
+node scripts/security/precommit-check.js
+

@@ -1,6 +1,9 @@
 export interface ProfileData {
     id: string
     fullName: string
+    displayName?: string
+    emailPrefix?: string
+    initials?: string
     username?: string
     major: string
     semester: string
@@ -17,6 +20,7 @@ export interface ProfileData {
     aura?: number
     createdAt?: any
     updatedAt?: any
+    notesCount?: number
 }
 
 export interface NoteData {

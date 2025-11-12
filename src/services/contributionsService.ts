@@ -1,19 +1,16 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
   orderBy,
   query,
-  serverTimestamp,
-  updateDoc,
   where,
   limit,
-  writeBatch,
 } from 'firebase/firestore'
 import { FirebaseError } from 'firebase/app'
 import { db } from '@/lib/firebase'
+import { updateNote, deleteNote } from '@/lib/api/notes'
 import { toTitleCase } from '@/lib/utils'
 import { UserNote } from '@/types/contributions'
 
@@ -182,15 +179,11 @@ class ContributionsService {
     }
   ): Promise<ContributionsServiceResponse<void>> {
     try {
-      const noteRef = doc(db, 'notes', noteId)
-
-      await updateDoc(noteRef, {
+      await updateNote(noteId, {
         name: updates.name,
         subject: updates.subject,
         teacher: updates.teacher,
-        module: updates.teacher,
         semester: updates.semester,
-        updatedAt: serverTimestamp(),
       })
 
       return {
@@ -210,7 +203,7 @@ class ContributionsService {
 
   async deleteContribution(noteId: string): Promise<ContributionsServiceResponse<void>> {
     try {
-      await deleteDoc(doc(db, 'notes', noteId))
+      await deleteNote(noteId)
 
       return {
         data: null,

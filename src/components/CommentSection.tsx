@@ -13,6 +13,7 @@ import {
   fetchReplies,
   likeComment,
 } from '@/lib/firebase'
+import { getEmailPrefix, computeDisplayName } from '@/lib/security/sanitization'
 
 const COMMENTS_PAGE_SIZE = 15
 
@@ -20,7 +21,7 @@ interface CommentRecord {
   id: string
   text: string
   userId: string
-  userEmail: string
+  emailPrefix?: string
   userPhotoURL?: string
   userName?: string
   createdAt: Date
@@ -177,16 +178,26 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     try {
       const commentRef = await addComment(noteId, {
         text: newComment.trim(),
-        userName: user.displayName || user.email?.split('@')[0] || 'Anonymous',
+        userName: computeDisplayName(
+          user.displayName,
+          user.displayName,
+          undefined,
+          getEmailPrefix(user.email) ?? undefined
+        ),
       })
 
       const optimisticComment: CommentWithState = enhanceComment({
         id: commentRef.id,
         text: newComment.trim(),
         userId: user.uid,
-        userEmail: user.email || '',
+        emailPrefix: getEmailPrefix(user.email) ?? undefined,
         userPhotoURL: user.photoURL || undefined,
-        userName: user.displayName || user.email?.split('@')[0] || 'Anonymous',
+        userName: computeDisplayName(
+          user.displayName,
+          user.displayName,
+          undefined,
+          getEmailPrefix(user.email) ?? undefined
+        ),
         createdAt: new Date(),
         updatedAt: new Date(),
         likes: 0,
@@ -304,16 +315,26 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     try {
       const replyRef = await addReply(noteId, commentId, {
         text: trimmed,
-        userName: user.displayName || user.email?.split('@')[0] || 'Anonymous',
+        userName: computeDisplayName(
+          user.displayName,
+          user.displayName,
+          undefined,
+          getEmailPrefix(user.email) ?? undefined
+        ),
       })
 
       const optimisticReply: ReplyRecord = {
         id: replyRef.id,
         text: trimmed,
         userId: user.uid,
-        userEmail: user.email || '',
+        emailPrefix: getEmailPrefix(user.email) ?? undefined,
         userPhotoURL: user.photoURL || undefined,
-        userName: user.displayName || user.email?.split('@')[0] || 'Anonymous',
+        userName: computeDisplayName(
+          user.displayName,
+          user.displayName,
+          undefined,
+          getEmailPrefix(user.email) ?? undefined
+        ),
         createdAt: new Date(),
         updatedAt: new Date(),
         likes: 0,
@@ -368,13 +389,13 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     }
   }
 
-  const getUserDisplayName = (comment: { userName?: string; userEmail: string }) => {
+  const getUserDisplayName = (comment: { userName?: string; emailPrefix?: string }) => {
     if (comment.userName) return comment.userName
-    const emailName = comment.userEmail?.split('@')[0] || 'Anonymous'
-    return emailName.charAt(0).toUpperCase() + emailName.slice(1)
+    const ep = comment.emailPrefix || 'User'
+    return ep.charAt(0).toUpperCase() + ep.slice(1)
   }
 
-  const getUserInitial = (email: string) => email.charAt(0).toUpperCase()
+  const getUserInitial = (ep: string) => (ep || 'U').charAt(0).toUpperCase()
 
   const renderReply = (reply: ReplyRecord) => {
     return (
@@ -392,7 +413,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
               />
             ) : (
               <span className="text-xs font-semibold uppercase tracking-wide">
-                {getUserInitial(reply.userEmail)}
+                {getUserInitial(reply.emailPrefix || '')}
               </span>
             )}
           </span>
@@ -481,7 +502,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100/80 text-[#90c639]">
                     {user ? (
                       <span className="text-sm font-semibold uppercase">
-                        {getUserInitial(user.email || '')}
+                        {getUserInitial(getEmailPrefix(user.email) ?? '')}
                       </span>
                     ) : (
                       <User className="h-5 w-5" />
@@ -559,7 +580,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                             />
                           ) : (
                             <span className="text-xs font-semibold uppercase tracking-wide">
-                              {getUserInitial(comment.userEmail)}
+                              {getUserInitial(comment.emailPrefix || '')}
                             </span>
                           )}
                         </span>

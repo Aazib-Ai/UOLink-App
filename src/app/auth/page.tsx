@@ -42,6 +42,13 @@ export default function AuthPage() {
       setSubmitting(true)
       await authenticateWithEmail(email.trim(), password, mode)
       if (mode === 'register') {
+        try {
+          setStatus('Ensuring your username...')
+          const { ensureUsername } = await import('@/lib/api/username')
+          await ensureUsername()
+        } catch (e) {
+          console.warn('Failed to ensure username:', e)
+        }
         setStatus('Registration successful! Check your university inbox for a verification email before continuing.')
         setVerificationMessage(`A verification link was sent to ${email.trim()}.`)
         return
@@ -63,6 +70,16 @@ export default function AuthPage() {
     try {
       setSubmitting(true)
       await signInWithGoogle()
+
+      // Ensure a username is assigned immediately after sign-in
+      try {
+        setStatus('Ensuring your username...')
+        const { ensureUsername } = await import('@/lib/api/username')
+        await ensureUsername()
+      } catch (e) {
+        // Non-blocking: continue to profile completion; failures are logged in server
+        console.warn('Failed to ensure username:', e)
+      }
 
       // Check if user has completed their profile
       setStatus('Checking profile status...')

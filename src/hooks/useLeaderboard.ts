@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
+import { collection, query, getDocs, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { UserProfile } from '@/lib/data/types'
 
@@ -29,38 +29,23 @@ export const useLeaderboard = (limitCount = 10) => {
                 )
                 const profilesSnapshot = await getDocs(leaderboardQuery)
 
-                // Enhance each profile with note statistics
-                const enhancedProfiles = await Promise.all(
-                    profilesSnapshot.docs.map(async (profileDoc, index) => {
-                        const profileData = profileDoc.data() as UserProfile
+                // Enhance each profile using denormalized counts to avoid per-user note reads
+                const enhancedProfiles = profilesSnapshot.docs.map((profileDoc, index) => {
+                    const profileData = profileDoc.data() as UserProfile
+                    const totalNotes = typeof profileData.notesCount === 'number' ? profileData.notesCount : 0
+                    const totalUpvotes = 0
+                    const totalSaves = 0
 
-                        // Get user's notes to calculate stats
-                        const notesQuery = query(
-                            collection(db, 'notes'),
-                            where('uploadedBy', '==', profileDoc.id)
-                        )
-                        const notesSnapshot = await getDocs(notesQuery)
-
-                        let totalUpvotes = 0
-                        let totalSaves = 0
-
-                        notesSnapshot.forEach((noteDoc) => {
-                            const noteData = noteDoc.data()
-                            totalUpvotes += noteData.upvoteCount || 0
-                            totalSaves += noteData.saveCount || 0
-                        })
-
-                        return {
-                            ...profileData,
-                            id: profileDoc.id,
-                            totalNotes: notesSnapshot.size,
-                            totalUpvotes,
-                            totalSaves,
-                            rank: index + 1,
-                            aura: profileData.aura || 0
-                        } as LeaderboardUser
-                    })
-                )
+                    return {
+                        ...profileData,
+                        id: profileDoc.id,
+                        totalNotes,
+                        totalUpvotes,
+                        totalSaves,
+                        rank: index + 1,
+                        aura: profileData.aura || 0
+                    } as LeaderboardUser
+                })
 
                 setLeaderboard(enhancedProfiles)
             } catch (err) {
@@ -88,38 +73,23 @@ export const useLeaderboard = (limitCount = 10) => {
             )
             const profilesSnapshot = await getDocs(leaderboardQuery)
 
-            // Enhance each profile with note statistics
-            const enhancedProfiles = await Promise.all(
-                profilesSnapshot.docs.map(async (profileDoc, index) => {
-                    const profileData = profileDoc.data() as UserProfile
+            // Enhance each profile using denormalized counts
+            const enhancedProfiles = profilesSnapshot.docs.map((profileDoc, index) => {
+                const profileData = profileDoc.data() as UserProfile
+                const totalNotes = typeof profileData.notesCount === 'number' ? profileData.notesCount : 0
+                const totalUpvotes = 0
+                const totalSaves = 0
 
-                    // Get user's notes to calculate stats
-                    const notesQuery = query(
-                        collection(db, 'notes'),
-                        where('uploadedBy', '==', profileDoc.id)
-                    )
-                    const notesSnapshot = await getDocs(notesQuery)
-
-                    let totalUpvotes = 0
-                    let totalSaves = 0
-
-                    notesSnapshot.forEach((noteDoc) => {
-                        const noteData = noteDoc.data()
-                        totalUpvotes += noteData.upvoteCount || 0
-                        totalSaves += noteData.saveCount || 0
-                    })
-
-                    return {
-                        ...profileData,
-                        id: profileDoc.id,
-                        totalNotes: notesSnapshot.size,
-                        totalUpvotes,
-                        totalSaves,
-                        rank: index + 1,
-                        aura: profileData.aura || 0
-                    } as LeaderboardUser
-                })
-            )
+                return {
+                    ...profileData,
+                    id: profileDoc.id,
+                    totalNotes,
+                    totalUpvotes,
+                    totalSaves,
+                    rank: index + 1,
+                    aura: profileData.aura || 0
+                } as LeaderboardUser
+            })
 
             setLeaderboard(enhancedProfiles)
         } catch (err) {

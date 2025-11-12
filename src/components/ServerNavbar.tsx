@@ -28,9 +28,10 @@ export function StaticNavLinks() {
         Register
       </Link>
 
-      <Link href="/about">
-        <div className='h-8 w-12 md:h-[40px] md:w-fit hover:brightness-90 transition-all rounded-full bg-gradient-to-r from-[#90c639] to-blue-500 flex items-center justify-center text-white font-bold text-xs touch-manipulation'>
-          About
+      {/* Timetable button for unauthenticated users */}
+      <Link href="/timetable" aria-label="Open timetable">
+        <div className='h-8 w-20 md:h-[40px] md:w-fit hover:brightness-90 transition-all rounded-full bg-gradient-to-r from-[#90c639] to-blue-500 flex items-center justify-center text-white font-bold text-xs md:text-sm touch-manipulation focus:outline-none focus:ring-2 focus:ring-[#90c639] focus:ring-offset-2'>
+          Timetable
         </div>
       </Link>
     </div>

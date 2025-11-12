@@ -7,7 +7,7 @@ import {
     deleteComment,
     addReply,
     fetchReplies,
-} from '../../lib/firebase/comments';
+} from '@/lib/firebase';
 import { CommentRecord, CommentReplyRecord, CommentsPageResult } from '../../lib/data/types';
 
 export const useCommentsApi = () => {

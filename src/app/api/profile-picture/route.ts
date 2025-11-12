@@ -3,11 +3,18 @@ import { getAdminAuth } from '@/lib/firebaseAdmin'
 import { getR2BucketName, getR2Client, buildR2PublicUrl } from '@/lib/r2'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { randomUUID } from 'crypto'
+import { logAuditEvent, startRouteSpan, endRouteSpan, getRequestContext, logSecurityEvent } from '@/lib/security/logging'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    const span = startRouteSpan('profile-picture.post', request)
+    // Per-IP upload rate limit: 5/min
+    const { enforceRateLimitOr429, rateLimitKeyByIp } = await import('@/lib/security/rateLimit')
+    const rl = await enforceRateLimitOr429(request, 'upload', rateLimitKeyByIp(request, 'upload'))
+    if (!rl.allowed) return rl.response
+
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Missing authentication token.' }, { status: 401 })
@@ -62,13 +69,37 @@ export async function POST(request: NextRequest) {
 
     const fileUrl = buildR2PublicUrl(objectKey)
 
-    return NextResponse.json({
+    const { ipAddress, userAgent } = getRequestContext(request)
+    await logAuditEvent({
+      action: 'PROFILE_PICTURE_UPLOAD',
+      resource: decoded.uid,
+      userId: decoded.uid,
+      ipAddress,
+      userAgent,
+      correlationId: span.correlationId,
+      details: { storageKey: objectKey, contentType: file.type, size: file.size },
+    })
+    const resp = NextResponse.json({
       fileUrl,
       storageKey: objectKey
     }, { status: 201 })
+    resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
+    resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
+    resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
+    await endRouteSpan(span, 201)
+    return resp
 
   } catch (error) {
     console.error('[api/profile-picture] Error occurred', error)
+    const { ipAddress, userAgent, endpoint } = getRequestContext(request)
+    await logSecurityEvent({
+      type: 'ERROR',
+      ipAddress,
+      userAgent,
+      endpoint,
+      correlationId: startRouteSpan('profile-picture.post.error', request).correlationId,
+      details: { message: error instanceof Error ? error.message : String(error) },
+    })
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Unable to upload profile picture.'
     }, { status: 500 })
@@ -77,6 +108,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const span = startRouteSpan('profile-picture.delete', request)
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Missing authentication token.' }, { status: 401 })
@@ -108,11 +140,30 @@ export async function DELETE(request: NextRequest) {
         Key: storageKey,
       })
     )
-
+    const { ipAddress, userAgent } = getRequestContext(request)
+    await logAuditEvent({
+      action: 'PROFILE_PICTURE_DELETE',
+      resource: decoded.uid,
+      userId: decoded.uid,
+      ipAddress,
+      userAgent,
+      correlationId: span.correlationId,
+      details: { storageKey, bucket },
+    })
+    await endRouteSpan(span, 200)
     return NextResponse.json({ success: true }, { status: 200 })
 
   } catch (error) {
     console.error('[api/profile-picture] Delete error occurred', error)
+    const { ipAddress, userAgent, endpoint } = getRequestContext(request)
+    await logSecurityEvent({
+      type: 'ERROR',
+      ipAddress,
+      userAgent,
+      endpoint,
+      correlationId: startRouteSpan('profile-picture.delete.error', request).correlationId,
+      details: { message: error instanceof Error ? error.message : String(error) },
+    })
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Unable to delete profile picture.'
     }, { status: 500 })

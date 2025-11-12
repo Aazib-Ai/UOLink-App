@@ -10,11 +10,8 @@ import {
     ExternalLink,
     Loader2
 } from 'lucide-react'
-import { 
-    checkAvailability, 
-    changeUsername, 
-    generateSuggestions 
-} from '@/lib/firebase/username-service'
+import { checkUsername, changeUsername as changeUsernameApi } from '@/lib/api/username'
+import { generateUsernameSuggestions } from '@/lib/username/generation'
 import { validateUsername } from '@/lib/username/validation'
 import { generateProfileUrl } from '@/lib/firebase/profile-resolver'
 import UsernameHistorySection from './UsernameHistorySection'
@@ -98,8 +95,9 @@ export default function UsernameChangeSection({
                     return
                 }
 
-                // Check availability
-                const isAvailable = await checkAvailability(newUsername)
+                // Check availability via server API
+                const availabilityRes = await checkUsername(newUsername)
+                const isAvailable = 'data' in availabilityRes ? availabilityRes.data.available : false
                 
                 if (isAvailable) {
                     setAvailability({
@@ -107,8 +105,8 @@ export default function UsernameChangeSection({
                         message: 'Username is available!'
                     })
                 } else {
-                    // Generate suggestions
-                    const suggestions = await generateSuggestions(newUsername)
+                    // Generate suggestions locally
+                    const suggestions = generateUsernameSuggestions(newUsername)
                     setAvailability({
                         isAvailable: false,
                         message: 'Username is already taken',
@@ -138,7 +136,10 @@ export default function UsernameChangeSection({
         setIsChanging(true)
         
         try {
-            await changeUsername(userId, newUsername)
+            const res = await changeUsernameApi(newUsername)
+            if ('error' in res) {
+                throw new Error(res.details || res.error)
+            }
             
             // Update parent component
             if (onUsernameChanged) {

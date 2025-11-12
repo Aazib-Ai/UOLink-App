@@ -13,7 +13,6 @@ import {
 import {
   getInitialNotes,
   getFilterOptions,
-  getAllNotesWithFilters,
   getNotesWithPagination,
 } from '@/lib/firebase'
 import { auth } from '@/lib/firebase'
@@ -138,11 +137,26 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
           materialType: materialTypeFilter,
           materialSequence: materialSequenceFilter,
         }
-        const result = await getAllNotesWithFilters(filters, titleFilter)
+        // Fetch first page using server-side pagination and apply search term client-side
+        const result = await getNotesWithPagination(9, null, filters)
 
-        setNotes(result.notes)
-        setLastDocSnapshot(null)
-        setHasMore(false)
+        const filteredBySearch = titleFilter.trim()
+          ? result.notes.filter((note: any) => {
+              const q = titleFilter.toLowerCase()
+              return (
+                (note.subject?.toLowerCase() || '').includes(q) ||
+                (note.teacher?.toLowerCase() || '').includes(q) ||
+                (note.contributorName?.toLowerCase() || '').includes(q) ||
+                (note.materialType?.toLowerCase() || '').includes(q) ||
+                (note.section?.toLowerCase() || '').includes(q) ||
+                (note.name?.toLowerCase() || '').includes(q)
+              )
+            })
+          : result.notes
+
+        setNotes(filteredBySearch)
+        setLastDocSnapshot(result.lastDocSnapshot)
+        setHasMore(result.hasMore)
       } else {
         const result = await getInitialNotes()
         setNotes(result.notes)
@@ -174,9 +188,37 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
 
     try {
       setLoadingMore(true)
-      const result = await getNotesWithPagination(10, lastDocSnapshot, {})
+      const hasFilters = hasActiveFilters()
+      const filters = hasFilters
+        ? {
+            semester: semesterFilter,
+            subject: subjectFilter,
+            teacher: teacherFilter,
+            contributorName: nameFilter,
+            section: sectionFilter,
+            contributorMajor: majorFilter,
+            materialType: materialTypeFilter,
+            materialSequence: materialSequenceFilter,
+          }
+        : {}
 
-      setNotes((prevNotes) => [...prevNotes, ...result.notes])
+      const result = await getNotesWithPagination(10, lastDocSnapshot, filters)
+
+      const nextNotes = titleFilter.trim()
+        ? result.notes.filter((note: any) => {
+            const q = titleFilter.toLowerCase()
+            return (
+              (note.subject?.toLowerCase() || '').includes(q) ||
+              (note.teacher?.toLowerCase() || '').includes(q) ||
+              (note.contributorName?.toLowerCase() || '').includes(q) ||
+              (note.materialType?.toLowerCase() || '').includes(q) ||
+              (note.section?.toLowerCase() || '').includes(q) ||
+              (note.name?.toLowerCase() || '').includes(q)
+            )
+          })
+        : result.notes
+
+      setNotes((prevNotes) => [...prevNotes, ...nextNotes])
       setLastDocSnapshot(result.lastDocSnapshot)
       setHasMore(result.hasMore)
     } catch (err: any) {

@@ -128,7 +128,7 @@ export function generateUsernameWithConflicts(
  */
 export function generateUsernameSuggestions(
     displayName: string,
-    existingUsernames: Set<string>,
+    existingUsernames: Set<string> = new Set(),
     count: number = 5
 ): string[] {
     const suggestions: string[] = [];

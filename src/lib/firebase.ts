@@ -49,7 +49,6 @@ export * as passwordService from './firebase/password-service';
 
 // Legacy exports for backward compatibility
 import {
-    addNote,
     getNotes,
     getNotesWithPagination,
     getInitialNotes,
@@ -58,8 +57,6 @@ import {
     getTotalNotesCount,
     getAllNotesWithFilters,
     getNotesForProfile,
-    voteOnNote,
-    toggleSaveNote,
 } from './firebase/notes';
 
 import {
@@ -96,25 +93,14 @@ import {
     initializeCacheDev
 } from './cache';
 
-import {
-    addComment,
-    fetchCommentsPage,
-    getComments,
-    likeComment,
-    deleteComment,
-    addReply,
-    fetchReplies,
-} from './firebase/comments';
+// Migrate comment mutations to server API wrappers
+import { addComment, likeComment, deleteComment, addReply } from './api/comments'
+import { fetchCommentsPage, getComments, fetchReplies } from './firebase/comments'
 
-import {
-    reportContent,
-    getReportStatus,
-    undoReport,
-} from './firebase/reports';
+// Reports legacy functions are deprecated; use lib/api/reports instead
 
 // Legacy exports for backward compatibility - these re-export the domain services
 export {
-    addNote,
     getNotes,
     getNotesWithPagination,
     getInitialNotes,
@@ -123,8 +109,6 @@ export {
     getTotalNotesCount,
     getAllNotesWithFilters,
     getNotesForProfile,
-    voteOnNote,
-    toggleSaveNote,
     addComment,
     fetchCommentsPage,
     getComments,
@@ -132,9 +116,6 @@ export {
     deleteComment,
     addReply,
     fetchReplies,
-    reportContent,
-    getReportStatus,
-    undoReport,
     getAuraLeaderboard,
     getUserProfile,
     getUserProfileByUsername,

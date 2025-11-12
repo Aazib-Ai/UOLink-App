@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react';
 import {
-    reportContent,
+    reportNote,
     getReportStatus,
     undoReport,
-} from '../../lib/firebase/reports';
+    type ReportStatus,
+} from '../../lib/api/reports';
+import { parseApiError, userFriendlyMessage } from '@/lib/api/client';
 
-export interface ReportStatus {
-    hasReported: boolean;
-    reportCount: number;
-}
+// Re-export type for convenience in consumers
+export type { ReportStatus } from '../../lib/api/reports';
 
 export const useReportsApi = () => {
     const [loading, setLoading] = useState(false);
@@ -21,9 +21,14 @@ export const useReportsApi = () => {
             const result = await asyncFn();
             return result;
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+            const parsed = parseApiError(err);
+            const errorMessage = userFriendlyMessage(parsed);
             setError(errorMessage);
-            console.error('Reports API Error:', err);
+            console.error('Reports API Error:', {
+                original: err,
+                parsed,
+                message: errorMessage,
+            });
             return null;
         } finally {
             setLoading(false);
@@ -35,7 +40,7 @@ export const useReportsApi = () => {
         error,
 
         reportContent: useCallback((noteId: string, reason: string, description?: string): Promise<boolean | null> =>
-            handleAsync(() => reportContent(noteId, reason, description)), [handleAsync]),
+            handleAsync(() => reportNote(noteId, reason, description)), [handleAsync]),
 
         getReportStatus: useCallback((noteId: string): Promise<ReportStatus | null> =>
             handleAsync(() => getReportStatus(noteId)), [handleAsync]),

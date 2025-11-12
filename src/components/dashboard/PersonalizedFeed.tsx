@@ -1,5 +1,3 @@
-'use client'
-
 import React, { useState } from 'react';
 import { usePersonalizedFeed } from '@/hooks/usePersonalizedFeed';
 import { useDashboardState } from '@/hooks/useDashboardState';
@@ -13,10 +11,10 @@ interface PersonalizedFeedProps {
 export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = '' }) => {
     const [feedMode, setFeedMode] = useState<'personalized' | 'general'>('personalized');
     const [showFilters, setShowFilters] = useState(false);
-    
+
     // Dashboard state for filters and general feed
     const dashboardState = useDashboardState();
-    
+
     // Personalized feed
     const personalizedFeed = usePersonalizedFeed({
         pageSize: 9,
@@ -36,6 +34,15 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = 
     // Determine which feed to show
     const currentFeed = feedMode === 'personalized' ? personalizedFeed : dashboardState;
     const notes = feedMode === 'personalized' ? personalizedFeed.notes : dashboardState.displayedNotes;
+
+    const refreshCurrent = () => {
+        if (feedMode === 'personalized') {
+            personalizedFeed.refresh();
+        } else {
+            // Re-apply filters to refresh general feed
+            dashboardState.applyFilters();
+        }
+    };
 
     const handleModeSwitch = (mode: 'personalized' | 'general') => {
         setFeedMode(mode);
@@ -60,11 +67,10 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = 
                     <div className="flex bg-amber-50 rounded-xl p-1">
                         <button
                             onClick={() => handleModeSwitch('personalized')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                                feedMode === 'personalized'
-                                    ? 'bg-[#90c639] text-white shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800'
-                            }`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${feedMode === 'personalized'
+                                ? 'bg-[#90c639] text-white shadow-sm'
+                                : 'text-gray-600 hover:text-gray-800'
+                                }`}
                             disabled={!personalizedFeed.isPersonalized}
                         >
                             <User className="w-4 h-4" />
@@ -72,17 +78,16 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = 
                         </button>
                         <button
                             onClick={() => handleModeSwitch('general')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                                feedMode === 'general'
-                                    ? 'bg-[#90c639] text-white shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-800'
-                            }`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${feedMode === 'general'
+                                ? 'bg-[#90c639] text-white shadow-sm'
+                                : 'text-gray-600 hover:text-gray-800'
+                                }`}
                         >
                             <TrendingUp className="w-4 h-4" />
                             Trending
                         </button>
                     </div>
-                    
+
                     {feedMode === 'personalized' && !personalizedFeed.isPersonalized && (
                         <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
                             Complete your profile for personalized feed
@@ -92,19 +97,13 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = 
 
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => {
-                            if (feedMode === 'personalized') {
-                                personalizedFeed.refresh();
-                            } else {
-                                dashboardState.applyFilters();
-                            }
-                        }}
+                        onClick={refreshCurrent}
                         className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                         title="Refresh feed"
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
-                    
+
                     <button
                         onClick={() => setShowFilters(!showFilters)}
                         className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -237,7 +236,7 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ className = 
                         {feedMode === 'personalized' ? 'No personalized notes found' : 'No notes found'}
                     </h3>
                     <p className="text-gray-600 mb-4">
-                        {feedMode === 'personalized' 
+                        {feedMode === 'personalized'
                             ? 'Try adjusting your filters or switch to trending feed'
                             : 'Try adjusting your filters or check back later'
                         }

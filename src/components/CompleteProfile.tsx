@@ -6,19 +6,17 @@ import { Camera, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import CustomSelect from './CustomSelect'
 import Navbar from './Navbar'
-import { db } from '@/lib/firebase'
-import { slugify } from '@/lib/utils'
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { uploadProfilePicture, deleteProfilePicture } from '@/lib/api/profile-picture'
+import { updateProfile } from '@/lib/api/profiles'
+import { checkUsername as checkUsernameApi, changeUsername as changeUsernameApi } from '@/lib/api/username'
 import { MAJOR_NAMES } from '@/constants/universityData'
 import { 
   generateBaseUsername, 
   generateUsernameWithConflicts 
 } from '@/lib/username/generation'
-import { 
-  checkAvailability, 
-  reserveUsername 
-} from '@/lib/firebase/username-service'
+// Username change handled via server APIs
 import { generateProfileUrl } from '@/lib/firebase/profile-resolver'
+import { checkAvailability } from '@/lib/firebase'
 
 interface ProfileData {
   fullName: string
@@ -26,6 +24,7 @@ interface ProfileData {
   semester: string
   section: string
   profilePicture: string | null
+  profilePictureStorageKey?: string | null
   generatedUsername?: string
   profileUrl?: string
 }
@@ -131,7 +130,7 @@ export default function CompleteProfile() {
     }
   }, [])
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
@@ -146,12 +145,31 @@ export default function CompleteProfile() {
         setProfileData(prev => ({ ...prev, profilePicture: result }))
       }
       reader.readAsDataURL(file)
+
+      // Upload to storage via server API
+      try {
+        const uploadRes = await uploadProfilePicture(file)
+        if ('error' in uploadRes) {
+          throw new Error(uploadRes.error)
+        }
+        const { fileUrl, storageKey } = uploadRes.data
+        setPreviewImage(fileUrl)
+        setProfileData(prev => ({ ...prev, profilePicture: fileUrl, profilePictureStorageKey: storageKey }))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to upload image')
+      }
     }
   }
 
   const handleRemoveImage = () => {
     setPreviewImage(null)
-    setProfileData(prev => ({ ...prev, profilePicture: null }))
+    // If we have a storage key, attempt deletion via server API
+    if (profileData.profilePictureStorageKey) {
+      deleteProfilePicture(profileData.profilePictureStorageKey).catch((err) => {
+        console.warn('Failed to delete profile picture:', err)
+      })
+    }
+    setProfileData(prev => ({ ...prev, profilePicture: null, profilePictureStorageKey: null }))
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -198,12 +216,13 @@ export default function CompleteProfile() {
         return
       }
 
-      // Generate and reserve username atomically
+      // Generate and reserve username via server API
       const baseUsername = generateBaseUsername(profileData.fullName.trim())
       let finalUsername = baseUsername
       
       // Check availability and generate with conflicts if needed
-      const isAvailable = await checkAvailability(baseUsername)
+      const availabilityRes = await checkUsernameApi(baseUsername)
+      const isAvailable = 'data' in availabilityRes ? availabilityRes.data.available : false
       if (!isAvailable) {
         // Use a more sophisticated conflict resolution
         const existingUsernames = new Set<string>() // In real implementation, this would be populated
@@ -213,32 +232,31 @@ export default function CompleteProfile() {
         )
       }
 
-      // Reserve the username atomically
-      await reserveUsername(user.uid, finalUsername)
+      // Reserve/change the username via server API
+      const changeRes = await changeUsernameApi(finalUsername)
+      if ('error' in changeRes) {
+        throw new Error(changeRes.details || changeRes.error)
+      }
 
-      // Create the profile with username
-      const profileRef = doc(db, 'profiles', user.uid)
-      const timestamp = serverTimestamp()
-      await setDoc(
-        profileRef,
-        {
-          fullName: profileData.fullName.trim(),
-          username: finalUsername,
-          major: profileData.major,
-          semester: profileData.semester,
-          section: profileData.section,
-          profilePicture: profileData.profilePicture,
-          profileCompleted: true,
-          completedAt: timestamp,
-          updatedAt: timestamp,
-          usernameLastChanged: timestamp,
-          email: user.email ?? null,
-          // Keep legacy fields for backward compatibility during migration
-          fullNameLower: profileData.fullName.trim().toLowerCase(),
-          profileSlug: slugify(profileData.fullName.trim()),
-        },
-        { merge: true }
-      )
+      // Create/update the profile via server API
+      const apiRes = await updateProfile(user.uid, {
+        fullName: profileData.fullName.trim(),
+        major: profileData.major,
+        semester: profileData.semester,
+        section: profileData.section,
+        bio: '',
+        about: '',
+        skills: [],
+        githubUrl: '',
+        linkedinUrl: '',
+        instagramUrl: '',
+        facebookUrl: '',
+        profilePicture: profileData.profilePicture,
+        profilePictureStorageKey: profileData.profilePictureStorageKey ?? null,
+      })
+      if ('error' in apiRes) {
+        throw new Error(apiRes.error)
+      }
 
       // Update profile data with final username for display
       setProfileData(prev => ({ 

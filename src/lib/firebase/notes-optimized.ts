@@ -4,6 +4,8 @@ import {
     serverTimestamp,
     increment,
     deleteField,
+    arrayUnion,
+    arrayRemove,
 } from 'firebase/firestore';
 import { db, auth } from './app';
 
@@ -136,6 +138,7 @@ export const toggleSaveNoteOptimized = async (noteId: string): Promise<Optimized
     const userId = auth.currentUser.uid;
     const noteRef = doc(db, 'notes', noteId);
     const userSaveRef = doc(db, 'users', userId, 'savedNotes', noteId);
+    const userIndexRef = doc(db, 'users', userId, 'savedNotesIndex');
 
     return await runTransaction(db, async (transaction) => {
         // Parallel reads
@@ -162,6 +165,12 @@ export const toggleSaveNoteOptimized = async (noteId: string): Promise<Optimized
             auraDelta = -5;
             saved = false;
             transaction.delete(userSaveRef);
+            // Update aggregated index (remove)
+            transaction.set(
+                userIndexRef,
+                { ids: arrayRemove(noteId), updatedAt: serverTimestamp() },
+                { merge: true }
+            );
         } else {
             // Save
             saveCountDelta = 1;
@@ -171,6 +180,12 @@ export const toggleSaveNoteOptimized = async (noteId: string): Promise<Optimized
                 noteId,
                 savedAt: serverTimestamp()
             });
+            // Update aggregated index (add)
+            transaction.set(
+                userIndexRef,
+                { ids: arrayUnion(noteId), updatedAt: serverTimestamp() },
+                { merge: true }
+            );
         }
 
         // Single atomic update

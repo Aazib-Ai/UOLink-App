@@ -5,13 +5,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { db } from '@/lib/firebase'
 import { syncUserProfileReferences } from '@/lib/firebase/profile-sync'
 import { slugify } from '@/lib/utils'
-import {
-  doc,
-  serverTimestamp,
-  updateDoc,
-  getDoc,
-  setDoc,
-} from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { uploadProfilePicture, deleteProfilePicture } from '@/lib/api/profile-picture'
+import { updateProfile } from '@/lib/api/profiles'
 
 interface ProfileData {
   id: string
@@ -310,73 +306,44 @@ export function useProfileEditForm() {
       }
       reader.readAsDataURL(file)
 
-      // Upload to R2
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const token = await user.getIdToken()
-      const response = await fetch('/api/profile-picture', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to upload image')
+      // Upload via server API
+      const uploadRes = await uploadProfilePicture(file)
+      if ('error' in uploadRes) {
+        throw new Error(uploadRes.error)
       }
-
-      const { fileUrl, storageKey } = await response.json()
+      const { fileUrl, storageKey } = uploadRes.data
 
       // Delete old image if exists
       if (profileData.profilePictureStorageKey) {
         try {
-          await fetch(`/api/profile-picture?key=${encodeURIComponent(profileData.profilePictureStorageKey)}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          })
+          const delRes = await deleteProfilePicture(profileData.profilePictureStorageKey)
+          if ('error' in delRes) {
+            // Non-blocking: log and continue
+            console.warn('Failed to delete old profile picture:', delRes.error)
+          }
         } catch (deleteError) {
           console.warn('Failed to delete old profile picture:', deleteError)
         }
       }
 
-      // Update Firebase with the new profile picture URL
-      const profileRef = doc(db, 'profiles', user.uid)
-
-      // Check if profile document exists, create if not
-      const profileSnap = await getDoc(profileRef)
-      if (!profileSnap.exists()) {
-        await setDoc(profileRef, {
-          fullName: profileData.fullName.trim(),
-          fullNameLower: profileData.fullName.trim().toLowerCase(),
-          profileSlug: slugify(profileData.fullName.trim()),
-          major: profileData.major || '',
-          semester: profileData.semester || '',
-          section: profileData.section || '',
-          bio: profileData.bio || '',
-          about: profileData.about || '',
-          skills: profileData.skills || [],
-          githubUrl: profileData.githubUrl || '',
-          linkedinUrl: profileData.linkedinUrl || '',
-          instagramUrl: profileData.instagramUrl || '',
-          facebookUrl: profileData.facebookUrl || '',
-          profilePicture: fileUrl,
-          profilePictureStorageKey: storageKey,
-          profileCompleted: false,
-          aura: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        })
-      } else {
-        await updateDoc(profileRef, {
-          profilePicture: fileUrl,
-          profilePictureStorageKey: storageKey,
-          updatedAt: serverTimestamp()
-        })
+      // Update via server API wrapper
+      const apiRes = await updateProfile(user.uid, {
+        fullName: profileData.fullName.trim(),
+        major: profileData.major || '',
+        semester: profileData.semester || '',
+        section: profileData.section || '',
+        bio: profileData.bio || '',
+        about: profileData.about || '',
+        skills: profileData.skills || [],
+        githubUrl: profileData.githubUrl || '',
+        linkedinUrl: profileData.linkedinUrl || '',
+        instagramUrl: profileData.instagramUrl || '',
+        facebookUrl: profileData.facebookUrl || '',
+        profilePicture: fileUrl,
+        profilePictureStorageKey: storageKey,
+      })
+      if ('error' in apiRes) {
+        throw new Error(apiRes.error)
       }
 
       setProfileData(prev => ({
@@ -416,28 +383,21 @@ export function useProfileEditForm() {
     try {
       // Delete from R2 if storage key exists
       if (profileData.profilePictureStorageKey) {
-        const token = await user?.getIdToken()
-        const response = await fetch(`/api/profile-picture?key=${encodeURIComponent(profileData.profilePictureStorageKey)}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to remove image from storage')
+        const delRes = await deleteProfilePicture(profileData.profilePictureStorageKey)
+        if ('error' in delRes) {
+          throw new Error(delRes.error || 'Failed to remove image from storage')
         }
       }
 
-      // Update Firestore to remove profile picture
+      // Update profile via server API wrapper
       if (user?.uid) {
-        const profileRef = doc(db, 'profiles', user.uid)
-        await updateDoc(profileRef, {
+        const apiRes = await updateProfile(user.uid, {
           profilePicture: null,
           profilePictureStorageKey: null,
-          updatedAt: serverTimestamp()
         })
+        if ('error' in apiRes) {
+          throw new Error(apiRes.error)
+        }
       }
 
       // Clear local state
@@ -568,12 +528,9 @@ export function useProfileEditForm() {
         facebookUrl: sanitizedFacebookUrl,
       })
 
-      // Check if profile document exists, create if not
-      const profileSnap = await getDoc(profileRef)
-      const updateData = {
+      // Persist via server API wrapper
+      const apiRes = await updateProfile(user.uid, {
         fullName: sanitizedProfile.fullName,
-        fullNameLower: sanitizedProfile.fullName.toLowerCase(),
-        profileSlug: slugify(sanitizedProfile.fullName),
         major: sanitizedProfile.major,
         semester: sanitizedProfile.semester,
         section: sanitizedProfile.section,
@@ -586,20 +543,9 @@ export function useProfileEditForm() {
         facebookUrl: sanitizedProfile.facebookUrl,
         profilePicture: sanitizedProfile.profilePicture,
         profilePictureStorageKey: sanitizedProfile.profilePictureStorageKey,
-        profileCompleted: true,
-        updatedAt: timestamp,
-      }
-
-      if (!profileSnap.exists()) {
-        // Create new document
-        await setDoc(profileRef, {
-          ...updateData,
-          aura: 0,
-          createdAt: timestamp,
-        })
-      } else {
-        // Update existing document
-        await updateDoc(profileRef, updateData)
+      })
+      if ('error' in apiRes) {
+        throw new Error(apiRes.error)
       }
 
       const normalizedPreviousFullName = previousProfile?.fullName?.trim() ?? ''

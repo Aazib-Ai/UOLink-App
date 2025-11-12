@@ -29,17 +29,18 @@ export default function ProfileAbout({
     aura
 }: ProfileAboutProps) {
     const trimmedAbout = profile.about?.trim()
+    const displayName = profile.displayName || profile.fullName || profile.username || ''
     const displayAbout =
         trimmedAbout && trimmedAbout.length > 0
             ? trimmedAbout
-            : `${firstName || profile.fullName} hasn't added an about section yet.`
+            : `${firstName || displayName} hasn't added an about section yet.`
 
     return (
         <section className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div className="rounded-3xl border border-lime-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-center gap-2 text-lg font-semibold text-[#1f2f10]">
                     <User className="h-5 w-5 text-[#90c639]" />
-                    About {firstName || profile.fullName}
+                    About {firstName || displayName}
                 </div>
                 <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-[#334125]">
                     {displayAbout}

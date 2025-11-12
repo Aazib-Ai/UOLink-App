@@ -48,3 +48,35 @@ export const deriveR2ObjectKey = (urlString: string, bucketName?: string) => {
     return null
   }
 }
+
+/**
+ * Audit object key path depth. Returns number of segments.
+ */
+export const getObjectKeyDepth = (objectKey: string): number => {
+  return objectKey.split('/').filter(Boolean).length
+}
+
+/**
+ * Build an object key with minimized path depth (<= 2 segments).
+ * Pattern: `<semester>/<subject-teacher>--<basename>-<unique>.<ext>`
+ */
+export const buildOptimizedObjectKey = (params: {
+  semesterSlug: string
+  subjectSlug: string
+  teacherSlug: string
+  baseName: string
+  uniqueSuffix: string
+  extension: string
+}) => {
+  const {
+    semesterSlug,
+    subjectSlug,
+    teacherSlug,
+    baseName,
+    uniqueSuffix,
+    extension,
+  } = params
+
+  const group = `${subjectSlug}-${teacherSlug}`
+  return `${semesterSlug}/${group}--${baseName}-${uniqueSuffix}.${extension}`
+}

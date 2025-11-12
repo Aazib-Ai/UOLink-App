@@ -33,6 +33,19 @@ const RESERVED_USERNAMES = new Set([
 ]);
 
 /**
+ * Normalize username input to a canonical form before validation.
+ * Uses NFKC to fold width/compatibility variants and trims whitespace.
+ */
+export function normalizeUsernameInput(username: string): string {
+    try {
+        return username.normalize('NFKC').trim();
+    } catch {
+        // In environments without full Unicode support, fallback to basic trim
+        return (username || '').trim();
+    }
+}
+
+/**
  * Validates username format according to system rules
  * Rules: 3-30 characters, alphanumeric + hyphens/underscores, 
  * must start and end with alphanumeric
@@ -40,29 +53,31 @@ const RESERVED_USERNAMES = new Set([
 export function validateUsernameFormat(username: string): ValidationResult {
     const errors: string[] = [];
 
-    if (!username) {
+    const input = normalizeUsernameInput(username);
+
+    if (!input) {
         errors.push('Username is required');
         return { isValid: false, errors };
     }
 
     // Length validation
-    if (username.length < 3) {
+    if (input.length < 3) {
         errors.push('Username must be at least 3 characters long');
     }
 
-    if (username.length > 30) {
+    if (input.length > 30) {
         errors.push('Username must be no more than 30 characters long');
     }
 
     // Character validation - only alphanumeric, hyphens, underscores
     const validCharPattern = /^[a-zA-Z0-9_-]+$/;
-    if (!validCharPattern.test(username)) {
+    if (!validCharPattern.test(input)) {
         errors.push('Username can only contain letters, numbers, hyphens, and underscores');
     }
 
     // Must start and end with alphanumeric
-    const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(username);
-    const endsWithAlphanumeric = /[a-zA-Z0-9]$/.test(username);
+    const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(input);
+    const endsWithAlphanumeric = /[a-zA-Z0-9]$/.test(input);
 
     if (!startsWithAlphanumeric) {
         errors.push('Username must start with a letter or number');
@@ -73,7 +88,7 @@ export function validateUsernameFormat(username: string): ValidationResult {
     }
 
     // No consecutive special characters
-    if (/[-_]{2,}/.test(username)) {
+    if (/[-_]{2,}/.test(input)) {
         errors.push('Username cannot contain consecutive hyphens or underscores');
     }
 
@@ -87,7 +102,8 @@ export function validateUsernameFormat(username: string): ValidationResult {
  * Checks if a username is reserved and cannot be used
  */
 export function isReservedUsername(username: string): boolean {
-    return RESERVED_USERNAMES.has(username.toLowerCase());
+    const input = normalizeUsernameInput(username)
+    return RESERVED_USERNAMES.has(input.toLowerCase());
 }
 
 /**

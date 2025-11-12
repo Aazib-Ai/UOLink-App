@@ -26,10 +26,11 @@ export default function ProfileHeader({
 }: ProfileHeaderProps) {
     const auraInfo = getAuraTier(profile.aura ?? 0)
     const trimmedBio = profile.bio?.trim()
+    const displayName = profile.displayName || profile.fullName || profile.username || ''
     const displayBio =
         trimmedBio && trimmedBio.length > 0
             ? trimmedBio
-            : `Say hi to ${firstName || profile.fullName}. They are busy sharing knowledge with Uolink.`
+            : `Say hi to ${firstName || displayName}. They are busy sharing knowledge with Uolink.`
 
     return (
         <section className="overflow-hidden rounded-3xl border border-lime-100 bg-white shadow-sm">
@@ -38,10 +39,10 @@ export default function ProfileHeader({
                     <div className="relative">
                         <div className="relative h-24 w-24 overflow-hidden rounded-[28px] border border-lime-100 bg-[#e8f3d2] text-[#1f2f10] shadow-inner md:h-28 md:w-28">
                             {profile.profilePicture ? (
-                                <img src={profile.profilePicture} alt={`${profile.fullName}'s profile`} className="h-full w-full object-cover" />
+                                <img src={profile.profilePicture} alt={`${displayName}'s profile`} className="h-full w-full object-cover" />
                             ) : (
                                 <div className="flex h-full w-full items-center justify-center text-2xl font-semibold md:text-3xl">
-                                    {(firstName || profile.fullName)[0]}
+                                    {(firstName || displayName)[0]}
                                 </div>
                             )}
                         </div>
@@ -59,7 +60,7 @@ export default function ProfileHeader({
                                 Joined {joinedDate}
                             </div>
                         )}
-                        <h1 className="mt-4 text-2xl font-semibold text-[#1f2f10] sm:text-3xl">{profile.fullName}</h1>
+                        <h1 className="mt-4 text-2xl font-semibold text-[#1f2f10] sm:text-3xl">{displayName}</h1>
                         <p className="mt-2 text-sm font-medium uppercase tracking-wide text-[#5f7050]">{heroTagline}</p>
                         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#334125]">
                             {displayBio}

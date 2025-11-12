@@ -10,6 +10,7 @@ interface CacheEntry {
     timestamp: number;
     accessCount: number;
     lastAccessed: number;
+    expiresAt?: number | null;
 }
 
 interface CacheStats {
@@ -45,11 +46,18 @@ class UsernameLookupCache {
             return undefined; // Cache miss
         }
 
-        // Check if entry is expired
+        // Check global TTL expiry
         if (Date.now() - entry.timestamp > this.ttlMs) {
             this.cache.delete(normalizedUsername);
             this.stats.misses++;
             return undefined; // Expired
+        }
+
+        // Check per-entry expiry (e.g., alias expiry)
+        if (entry.expiresAt && Date.now() > entry.expiresAt) {
+            this.cache.delete(normalizedUsername);
+            this.stats.misses++;
+            return undefined; // Expired by alias TTL
         }
 
         // Update access statistics
@@ -63,7 +71,7 @@ class UsernameLookupCache {
     /**
      * Cache profile for username
      */
-    set(username: string, profile: UserProfile | null): void {
+    set(username: string, profile: UserProfile | null, opts?: { expiresAt?: number | Date | null }): void {
         const normalizedUsername = username.toLowerCase().trim();
 
         // Ensure cache doesn't exceed max size
@@ -71,11 +79,16 @@ class UsernameLookupCache {
             this.evictLeastRecentlyUsed();
         }
 
+        const expiresAtTs = opts?.expiresAt instanceof Date
+            ? opts?.expiresAt.getTime()
+            : (typeof opts?.expiresAt === 'number' ? opts?.expiresAt : null);
+
         const entry: CacheEntry = {
             profile,
             timestamp: Date.now(),
             accessCount: 1,
-            lastAccessed: Date.now()
+            lastAccessed: Date.now(),
+            expiresAt: expiresAtTs ?? null
         };
 
         this.cache.set(normalizedUsername, entry);

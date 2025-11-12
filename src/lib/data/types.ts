@@ -6,7 +6,7 @@ export interface CommentRecord {
     id: string;
     text: string;
     userId: string;
-    userEmail: string;
+    emailPrefix?: string;
     userPhotoURL?: string;
     userName?: string;
     userDisplayName?: string;
@@ -38,6 +38,7 @@ export interface UserProfile {
     profilePictureStorageKey?: string | null;
     profileCompleted?: boolean;
     aura?: number;
+    notesCount?: number;                  // Denormalized count of notes contributed
     [key: string]: unknown;
 }
 

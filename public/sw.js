@@ -70,6 +70,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Always bypass caching for Next.js build assets to prevent stale chunks
+  // These include RSC payloads and webpack runtime files under /_next/
+  if (url.pathname.startsWith('/_next/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // Handle download requests specially
   if (url.searchParams.has('download')) {
     event.respondWith(
@@ -188,7 +195,8 @@ self.addEventListener('fetch', (event) => {
         return fetch(request)
           .then((response) => {
             // Cache successful responses
-            if (response.status === 200) {
+            // Avoid caching Next.js assets and dynamic API responses here
+            if (response.status === 200 && !url.pathname.startsWith('/_next/')) {
               const responseClone = response.clone();
               caches.open(DYNAMIC_CACHE_NAME)
                 .then((cache) => {

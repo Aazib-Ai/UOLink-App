@@ -1,8 +1,6 @@
 import { useCallback, useState } from 'react';
-import {
-    adjustUserAura,
-    getAuraLeaderboard,
-} from '../../lib/firebase/aura';
+import { adjustAura } from '@/lib/api/aura'
+import { getAuraLeaderboard } from '@/lib/firebase/aura'
 
 export const useAuraApi = () => {
     const [loading, setLoading] = useState(false);
@@ -29,7 +27,7 @@ export const useAuraApi = () => {
         error,
 
         adjustUserAura: useCallback((userId: string, auraDelta: number) =>
-            handleAsync(() => adjustUserAura(userId, auraDelta)), [handleAsync]),
+            handleAsync(() => adjustAura(userId, auraDelta)), [handleAsync]),
 
         getAuraLeaderboard: useCallback((limitCount?: number) =>
             handleAsync(() => getAuraLeaderboard(limitCount)), [handleAsync]),

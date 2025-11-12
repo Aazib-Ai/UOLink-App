@@ -28,8 +28,10 @@ node_modules
 /out/
 
 # TypeScript
+# Cache and build metadata (auto-generated)
 *.tsbuildinfo
-next-env.d.ts
+# Do NOT ignore next-env.d.ts; it should be committed for TypeScript support
+# next-env.d.ts
 
 # ===================================================================
 # MOST IMPORTANT SECTION FOR SECURITY AND EFFICIENCY
@@ -37,10 +39,14 @@ next-env.d.ts
 
 # Environment variables - DO NOT UPLOAD YOUR SECRETS!
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env*
+# Allow example env template
+!.env.local.example
+
+# Package manager configs that may contain tokens
+.npmrc
+.yarnrc
+.pnpmrc
 
 # Log files
 npm-debug.log*
@@ -73,6 +79,10 @@ firestore.rules
 firestore.indexes.json
 storage.rules
 firestore-debug.log
+
+# Service account and credential files
+*service-account*.json
+*credentials*.json
 
 # Cloudflare R2 and storage configuration
 *r2-config*
@@ -116,10 +126,11 @@ api-keys.txt
 secrets.txt
 private-config.json
 
-# Build artifacts and dependency files
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# Build artifacts
+# Lock files SHOULD be committed to ensure deterministic installs
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
 
 # Local development files
 .DS_Store
@@ -150,8 +161,35 @@ coverage/
 .nyc_output/
 junit.xml
 test-results/
+src/**/__tests__/
+src/**/*.test.ts
+src/**/*.test.tsx
+src/**/*.spec.ts
+src/**/*.spec.tsx
+scripts/test-*
+Timetable.json
+.trae/
 
 # Backup files
 *.bak
 *.backup
 *.old
+
+# ===================================================================
+# CI/CD and deployment
+# ===================================================================
+
+# Ignore local Vercel project directory
+.vercel/
+
+# Ignore OS-specific junk files
+.AppleDouble
+.LSOverride
+
+# ===================================================================
+# Edmund Panels & Security Configs (placeholder)
+# ===================================================================
+# If any internal admin/security panel configs exist (e.g., Edmund Panels),
+# ensure their local configuration files (containing credentials or overrides)
+# use .env.* or project-local files and thus match the patterns above.
+# Source code for admin/moderation panels remains committed for production.

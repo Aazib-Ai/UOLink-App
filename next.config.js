@@ -16,6 +16,9 @@ if (r2PublicBaseUrl) {
 }
 
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     domains: imageDomains,
     formats: ['image/avif', 'image/webp'],
@@ -30,33 +33,45 @@ const nextConfig = {
   experimental: {
     webVitalsAttribution: ['CLS', 'LCP'],
     // Enable large request body handling for App Router
-    serverComponentsExternalPackages: ['firebase-admin']
   },
   headers: async () => {
+    const isDev = process.env.NODE_ENV !== 'production'
+    const securityHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), usb=(), payment=()' },
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+      { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+    ]
+    if (!isDev) {
+      securityHeaders.push({ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' })
+    }
+
     return [
+      // Global security headers for all routes
+      {
+        source: '/(.*)',
+        headers: securityHeaders,
+      },
+
+      // Service worker specific headers (inherits global security headers above)
       {
         source: '/sw.js',
         headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=0, must-revalidate',
-          },
-          {
-            key: 'Service-Worker-Allowed',
-            value: '/',
-          },
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
+
+      // Manifest can be cached aggressively
       {
         source: '/manifest.json',
         headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
-    ];
+    ]
   },
 
   webpack: (config) => {

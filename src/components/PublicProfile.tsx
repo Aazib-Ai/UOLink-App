@@ -33,6 +33,9 @@ export default function PublicProfile() {
     const [selectedSubject, setSelectedSubject] = useState('')
     const [showSubjectDropdown, setShowSubjectDropdown] = useState(false)
     const [displayedCount, setDisplayedCount] = useState(5)
+    const [lastDoc, setLastDoc] = useState<any>(null)
+    const [serverHasMore, setServerHasMore] = useState(false)
+    const [isLoadingMore, setIsLoadingMore] = useState(false)
 
     const auraInfo = useMemo(() => getAuraTier(profile?.aura ?? 0), [profile])
 
@@ -73,11 +76,36 @@ export default function PublicProfile() {
     const filteredNotesLength = filteredNotes.length
     const displayedNotesLength = displayedNotes.length
 
-    const hasMoreNotes = displayedNotesLength < filteredNotesLength
+    const hasMoreNotes = (displayedNotesLength < filteredNotesLength) || serverHasMore
 
-    const loadMoreNotes = useCallback(() => {
-        setDisplayedCount(prev => Math.min(prev + 5, filteredNotesLength))
-    }, [filteredNotesLength])
+    const loadMoreNotes = useCallback(async () => {
+        // First consume local filtered notes
+        const remainingLocal = filteredNotesLength - displayedNotesLength
+        if (remainingLocal > 0) {
+            setDisplayedCount(prev => Math.min(prev + 5, filteredNotesLength))
+            return
+        }
+
+        // If no local remaining but server indicates more, fetch next page
+        if (!serverHasMore || !profile?.id) return
+        setIsLoadingMore(true)
+        try {
+            const next = await getNotesForProfile({
+                uploadedBy: profile.id,
+                pageSize: 10,
+                lastDocSnapshot: lastDoc,
+            })
+            setUserNotes(prev => [...prev, ...next.notes])
+            setLastDoc(next.lastDocSnapshot)
+            setServerHasMore(next.hasMore)
+            // After fetching, allow UI to display 5 more
+            setDisplayedCount(prev => prev + 5)
+        } catch (err) {
+            console.error('Failed to load more profile notes:', err)
+        } finally {
+            setIsLoadingMore(false)
+        }
+    }, [filteredNotesLength, displayedNotesLength, serverHasMore, profile?.id, lastDoc])
 
     // Reset displayed count when filters change
     useEffect(() => {
@@ -102,23 +130,32 @@ export default function PublicProfile() {
                     return
                 }
 
+                const displayName =
+                    (typeof profileData.displayName === 'string' && profileData.displayName) ||
+                    (typeof profileData.fullName === 'string' && profileData.fullName) ||
+                    (typeof profileData.username === 'string' && profileData.username) ||
+                    decodedUserName
                 const normalizedProfile: ProfileData = {
                     id: profileData.id,
-                    fullName: profileData.fullName ?? decodedUserName,
-                    username: profileData.username,
-                    major: profileData.major ?? '',
+                    fullName: String(displayName),
+                    displayName: typeof displayName === 'string' ? displayName : undefined,
+                    emailPrefix: typeof profileData.emailPrefix === 'string' ? profileData.emailPrefix : undefined,
+                    initials: typeof profileData.initials === 'string' ? profileData.initials : undefined,
+                    username: typeof profileData.username === 'string' ? profileData.username : undefined,
+                    major: typeof profileData.major === 'string' ? profileData.major : '',
                     semester: typeof profileData.semester === 'string' ? profileData.semester : profileData.semester ? String(profileData.semester) : '',
-                    section: profileData.section ?? '',
-                    bio: profileData.bio ?? '',
-                    about: profileData.about ?? '',
-                    skills: Array.isArray(profileData.skills) ? profileData.skills : [],
-                    githubUrl: profileData.githubUrl ?? '',
-                    linkedinUrl: profileData.linkedinUrl ?? '',
-                    instagramUrl: profileData.instagramUrl ?? '',
-                    facebookUrl: profileData.facebookUrl ?? '',
-                    profilePicture: profileData.profilePicture ?? null,
+                    section: typeof profileData.section === 'string' ? profileData.section : '',
+                    bio: typeof profileData.bio === 'string' ? profileData.bio : '',
+                    about: typeof profileData.about === 'string' ? profileData.about : '',
+                    skills: Array.isArray(profileData.skills) ? profileData.skills.filter((s): s is string => typeof s === 'string') : [],
+                    githubUrl: typeof profileData.githubUrl === 'string' ? profileData.githubUrl : '',
+                    linkedinUrl: typeof profileData.linkedinUrl === 'string' ? profileData.linkedinUrl : '',
+                    instagramUrl: typeof profileData.instagramUrl === 'string' ? profileData.instagramUrl : '',
+                    facebookUrl: typeof profileData.facebookUrl === 'string' ? profileData.facebookUrl : '',
+                    profilePicture: typeof profileData.profilePicture === 'string' ? profileData.profilePicture : null,
                     profileCompleted: Boolean(profileData.profileCompleted),
-                    aura: profileData.aura,
+                    aura: typeof profileData.aura === 'number' ? profileData.aura : undefined,
+                    notesCount: typeof profileData.notesCount === 'number' ? profileData.notesCount : undefined,
                     createdAt: profileData.createdAt,
                     updatedAt: profileData.updatedAt,
                 }
@@ -127,9 +164,12 @@ export default function PublicProfile() {
 
                 const notesResult = await getNotesForProfile({
                     uploadedBy: profileData.id,
+                    pageSize: 10,
                 })
 
                 setUserNotes(notesResult.notes)
+                setLastDoc(notesResult.lastDocSnapshot)
+                setServerHasMore(notesResult.hasMore)
             } catch (err: any) {
                 console.error('Error fetching profile:', err)
                 setError(err.message || 'Failed to load profile')
@@ -285,6 +325,7 @@ export default function PublicProfile() {
                                     searchTerm={searchTerm}
                                     selectedSubject={selectedSubject}
                                     clearFilters={clearFilters}
+                                    isLoadingMore={isLoadingMore}
                                 />
                             </div>
                         </div>

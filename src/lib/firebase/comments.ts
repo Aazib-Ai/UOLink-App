@@ -18,6 +18,7 @@ import { db, auth } from './app';
 import { toNumber, clampNonNegative, readString, readNumber } from '../data/common';
 import { CommentRecord, CommentReplyRecord, CommentsPageResult } from '../data/types';
 import { queueAuraAdjustment } from './aura';
+import { safeText, getEmailPrefix } from '../security/sanitization';
 
 const pickNonEmptyString = (...values: unknown[]): string | undefined => {
     for (const value of values) {
@@ -34,15 +35,15 @@ const pickNonEmptyString = (...values: unknown[]): string | undefined => {
 const mapCommentDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): CommentRecord => {
     const data = snapshot.data() ?? {};
 
-    const text = readString(data.text) ?? '';
+    const text = safeText(readString(data.text) ?? '', { maxLength: 2000 });
     const userId = readString(data.userId) ?? '';
-    const userEmail = readString(data.userEmail) ?? '';
+    const emailPrefix = readString(data.emailPrefix) ?? undefined;
 
     return {
         id: snapshot.id,
         text,
         userId,
-        userEmail,
+        emailPrefix,
         userPhotoURL: readString(data.userPhotoURL),
         userName: readString(data.userName),
         userDisplayName: readString(data.userDisplayName) ?? readString(data.userName) ?? undefined,
@@ -57,15 +58,15 @@ const mapCommentDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): Comm
 const mapReplyDocument = (snapshot: QueryDocumentSnapshot<DocumentData>): CommentReplyRecord => {
     const data = snapshot.data() ?? {};
 
-    const text = readString(data.text) ?? '';
+    const text = safeText(readString(data.text) ?? '', { maxLength: 2000 });
     const userId = readString(data.userId) ?? '';
-    const userEmail = readString(data.userEmail) ?? '';
+    const emailPrefix = readString(data.emailPrefix) ?? undefined;
 
     return {
         id: snapshot.id,
         text,
         userId,
-        userEmail,
+        emailPrefix,
         userPhotoURL: readString(data.userPhotoURL),
         userName: readString(data.userName),
         userDisplayName: readString(data.userDisplayName) ?? readString(data.userName) ?? undefined,
@@ -88,9 +89,9 @@ export const addComment = async (noteId: string, commentData: any) => {
         const username = pickNonEmptyString(commentData.userUsername) ?? null;
 
         const docRef = await addDoc(commentsCollection, {
-            ...commentData,
+            text: safeText(commentData?.text ?? '', { maxLength: 2000 }),
             userId: auth.currentUser.uid,
-            userEmail: auth.currentUser.email,
+            emailPrefix: getEmailPrefix(auth.currentUser.email) ?? null,
             userPhotoURL: auth.currentUser.photoURL,
             userName: displayName ?? null,
             userDisplayName: displayName,
@@ -256,9 +257,9 @@ export const addReply = async (noteId: string, commentId: string, replyData: any
         const timestamp = serverTimestamp();
 
         transaction.set(replyRef, {
-            ...replyData,
+            text: safeText(replyData?.text ?? '', { maxLength: 2000 }),
             userId: auth.currentUser?.uid,
-            userEmail: auth.currentUser?.email,
+            emailPrefix: getEmailPrefix(auth.currentUser?.email) ?? null,
             userPhotoURL: auth.currentUser?.photoURL,
             userName: displayName ?? null,
             userDisplayName: displayName,

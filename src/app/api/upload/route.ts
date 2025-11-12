@@ -2,14 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebaseAdmin'
 import { normalizeForStorage } from '@/lib/utils'
 import { FieldValue } from 'firebase-admin/firestore'
-import { getR2BucketName, getR2Client, buildR2PublicUrl } from '@/lib/r2'
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { getR2BucketName, getR2Client, buildR2PublicUrl, r2SendWithRetry, shouldUseSignedUrls, getR2SignedUrl } from '@/lib/r2'
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { randomUUID } from 'crypto'
 import {
   resolveUploadDescriptorByExtension,
   resolveUploadDescriptorByMime,
   getSupportedFileTypeSummary,
 } from '@/constants/uploadFileTypes'
+import { validateFileUpload, parseAndValidateUploadFormData } from '@/lib/security/validation'
+import { apiErrorByKey, apiError } from '@/lib/api/errors'
+import { enforceRateLimitOr429, rateLimitKeyByIp, RATE_LIMITS } from '@/lib/security/rateLimit'
+import { logAuditEvent, logSecurityEvent, startRouteSpan, endRouteSpan, getRequestContext } from '@/lib/security/logging'
+import { enforceNoteSchemaOnWrite } from '@/lib/data/note-schema'
+import { buildOptimizedObjectKey, getObjectKeyDepth } from '@/lib/r2-shared'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +27,12 @@ export const dynamic = 'force-dynamic'
 
 const allowedEmailPattern = /^\d{8}@student\.uol\.edu\.pk$/i
 
+// Control local debug logging; quiet in production unless explicitly enabled
+const VERBOSE_LOGS =
+  process.env.LOG_API_VERBOSE === 'true' ||
+  process.env.LOG_API_VERBOSE === '1' ||
+  process.env.NODE_ENV !== 'production'
+
 const slugify = (value: string) =>
   normalizeForStorage(value)
     .replace(/[^a-z0-9]+/g, '-')
@@ -28,9 +40,14 @@ const slugify = (value: string) =>
 
 export async function POST(request: NextRequest) {
   try {
+    const span = startRouteSpan('upload.post', request)
+    // Rate limit per IP for uploads: 5/min
+    const rl = await enforceRateLimitOr429(request, 'upload', rateLimitKeyByIp(request, 'upload'))
+    if (!rl.allowed) return rl.response
+
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing authentication token.' }, { status: 401 })
+      return apiErrorByKey(401, 'UNAUTHORIZED', 'Missing authentication token.')
     }
 
     const token = authorization.replace('Bearer ', '')
@@ -38,140 +55,81 @@ export async function POST(request: NextRequest) {
     const decoded = await adminAuth.verifyIdToken(token)
 
     if (!decoded.email || !allowedEmailPattern.test(decoded.email)) {
-      return NextResponse.json({ error: 'Only university accounts can upload materials.' }, { status: 403 })
+      return apiErrorByKey(403, 'FORBIDDEN', 'Only university accounts can upload materials.')
     }
 
     // Handle large file uploads by processing formData with proper error handling
     let formData: FormData
     try {
       // Log request details for debugging
-      console.log('[api/upload] Processing upload request, Content-Length:', request.headers.get('content-length'))
+      if (VERBOSE_LOGS) {
+        console.log('[api/upload] Processing upload request, Content-Length:', request.headers.get('content-length'))
+      }
 
       formData = await request.formData()
 
-      console.log('[api/upload] Successfully parsed form data')
+      if (VERBOSE_LOGS) {
+        console.log('[api/upload] Successfully parsed form data')
+      }
     } catch (error) {
       console.error('[api/upload] Failed to parse form data:', error)
 
       // Check for specific error types
       if (error instanceof Error) {
         if (error.message.includes('size') || error.message.includes('limit') || error.message.includes('413')) {
-          return NextResponse.json({
-            error: 'File is too large. Please upload a file smaller than 25MB.',
-            details: 'The server rejected the request due to file size limits.'
-          }, { status: 413 })
+          return apiErrorByKey(413, 'VALIDATION_ERROR', 'File is too large. Please upload a file smaller than 25MB.')
         }
 
         if (error.message.includes('timeout')) {
-          return NextResponse.json({
-            error: 'Upload timeout. Please try uploading a smaller file or check your connection.',
-            details: 'The upload took too long to complete.'
-          }, { status: 408 })
+          return apiErrorByKey(408, 'VALIDATION_ERROR', 'Upload timeout. Please try again later.')
         }
       }
 
-      return NextResponse.json({
-        error: 'Failed to process upload. Please try again.',
-        details: error instanceof Error ? error.message : 'Unknown error occurred'
-      }, { status: 400 })
+      return apiErrorByKey(400, 'VALIDATION_ERROR', 'Failed to process upload. Please try again.')
     }
     const file = formData.get('file') as File | null
-
     if (!file) {
-      return NextResponse.json({ error: 'No file received.' }, { status: 400 })
+      return apiErrorByKey(400, 'VALIDATION_ERROR', 'No file received.')
     }
 
+    const fileValidation = validateFileUpload(file)
+    if (!fileValidation.isValid) {
+      const msg = fileValidation.errors[0]?.message || 'Invalid file'
+      return apiErrorByKey(400, 'VALIDATION_ERROR', msg)
+    }
     const originalFileName = (file.name || '').trim()
-    const providedExtension =
-      originalFileName && originalFileName.includes('.')
-        ? (originalFileName.split('.').pop() ?? '').toLowerCase()
-        : ''
-    const mimeMatch = file.type ? resolveUploadDescriptorByMime(file.type) : undefined
-    const extensionMatch = providedExtension ? resolveUploadDescriptorByExtension(providedExtension) : undefined
+    const resolvedExtension = fileValidation.sanitizedData!.extension
+    const normalizedContentType = fileValidation.sanitizedData!.contentType
 
-    if (!mimeMatch && !extensionMatch) {
-      const summary = getSupportedFileTypeSummary()
-      return NextResponse.json(
-        {
-          error: summary ? `Only ${summary} are supported.` : 'Unsupported file type.',
-        },
-        { status: 400 }
-      )
+    const metaValidation = parseAndValidateUploadFormData(formData)
+    if (!metaValidation.isValid) {
+      const msg = metaValidation.errors[0]?.message || 'Invalid metadata'
+      return apiErrorByKey(400, 'VALIDATION_ERROR', msg)
     }
-
-    const resolvedExtension = extensionMatch?.extension ?? mimeMatch?.extension ?? 'pdf'
-    const normalizedContentType =
-      file.type || mimeMatch?.mimeTypes[0] || extensionMatch?.mimeTypes[0] || 'application/octet-stream'
-
-    const MAX_FILE_BYTES = (parseInt(process.env.MAX_UPLOAD_SIZE_MB || '25') * 1024 * 1024)
-    if (file.size > MAX_FILE_BYTES) {
-      return NextResponse.json({ error: 'File exceeds the 25 MB limit.' }, { status: 400 })
-    }
-
-    const name = (formData.get('name') as string | null)?.trim()
-    const subject = (formData.get('subject') as string | null)?.trim()
-    const teacher = (formData.get('teacher') as string | null)?.trim()
-    const semester = (formData.get('semester') as string | null)?.trim()
-    const sectionRaw = (formData.get('section') as string | null)?.trim()?.toUpperCase()
-    const materialTypeRaw = (formData.get('materialType') as string | null)?.trim()?.toLowerCase()
-    const materialSequenceRaw = (formData.get('materialSequence') as string | null)?.trim()
-    const contributorName = (formData.get('contributorName') as string | null)?.trim()
-    const contributorMajor = (formData.get('contributorMajor') as string | null)?.trim()
-
-    if (!name || !subject || !teacher || !semester || !sectionRaw || !materialTypeRaw) {
-      return NextResponse.json({ error: 'Missing required metadata fields.' }, { status: 400 })
-    }
-
-    const allowedSemesters = new Set(['1', '2', '3', '4', '5', '6', '7', '8'])
-    if (!allowedSemesters.has(semester)) {
-      return NextResponse.json({ error: 'Select a valid semester (1-8).' }, { status: 400 })
-    }
-
-    const allowedSections = new Set(['A', 'B', 'C'])
-    if (!allowedSections.has(sectionRaw)) {
-      return NextResponse.json({ error: 'Select a valid section (A, B, or C).' }, { status: 400 })
-    }
-
-    const allowedMaterialTypes = new Set([
-      'assignment',
-      'quiz',
-      'lecture',
-      'slides',
-      'midterm-notes',
-      'final-term-notes',
-      'books',
-    ])
-
-    if (!allowedMaterialTypes.has(materialTypeRaw)) {
-      return NextResponse.json({ error: 'Select a valid material type.' }, { status: 400 })
-    }
-
-    const requiresSequence = materialTypeRaw === 'assignment' || materialTypeRaw === 'quiz'
-    if (requiresSequence) {
-      const allowedSequence = new Set(['1', '2', '3', '4'])
-      if (!materialSequenceRaw || !allowedSequence.has(materialSequenceRaw)) {
-        return NextResponse.json({ error: 'Select a valid assignment or quiz number (1-4).' }, { status: 400 })
-      }
-    }
+    const { meta } = metaValidation.sanitizedData!
 
     const fileBuffer = Buffer.from(await file.arrayBuffer())
     const r2Client = getR2Client()
     const bucket = getR2BucketName()
     const db = getAdminDb()
 
-    // Validate contributor name from form data
-    if (!contributorName || contributorName.trim() === '') {
-      return NextResponse.json({ error: 'Contributor name is required.' }, { status: 400 })
-    }
+    // contributorName validated above
 
-    const semesterSlug = slugify(semester)
-    const subjectSlug = slugify(subject)
-    const teacherSlug = slugify(teacher)
+    const semesterSlug = slugify(meta.semester)
+    const subjectSlug = slugify(meta.subject)
+    const teacherSlug = slugify(meta.teacher)
 
     const uniqueSuffix = `${Date.now()}-${randomUUID()}`
-    const baseNameSource = originalFileName || name || `${subject}-${teacher}`
-    const sanitizedOriginalName = slugify(baseNameSource.replace(/\.[^/.]+$/, '')) || slugify(name)
-    const objectKey = `${semesterSlug}/${subjectSlug}/${teacherSlug}/${sanitizedOriginalName}-${uniqueSuffix}.${resolvedExtension}`
+    const baseNameSource = originalFileName || meta.name || `${meta.subject}-${meta.teacher}`
+    const sanitizedOriginalName = slugify(baseNameSource.replace(/\.[^/.]+$/, '')) || slugify(meta.name)
+    const objectKey = buildOptimizedObjectKey({
+      semesterSlug,
+      subjectSlug,
+      teacherSlug,
+      baseName: sanitizedOriginalName,
+      uniqueSuffix,
+      extension: resolvedExtension,
+    })
 
     const profileRef = db.collection('profiles').doc(decoded.uid)
     const profileSnapshot = await profileRef.get()
@@ -191,38 +149,52 @@ export async function POST(request: NextRequest) {
     const profileUsername =
       typeof profileData.username === 'string' ? profileData.username.trim() : ''
     const contributorDisplayName =
-      profileFullName || contributorName || decoded.name || decoded.email?.split('@')[0] || 'Anonymous'
+      profileFullName || meta.contributorName || decoded.name || decoded.email?.split('@')[0] || 'Anonymous'
     const uploaderUsername = profileUsername || null
 
-    await r2Client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: objectKey,
-        Body: fileBuffer,
-        ContentType: normalizedContentType,
-        ContentLength: file.size,
-        Metadata: {
-          uploadedBy: decoded.uid,
-          originalFileName: file.name,
-        },
-      })
-    )
+    try {
+      await r2SendWithRetry(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: objectKey,
+          Body: fileBuffer,
+          ContentType: normalizedContentType,
+          ContentLength: file.size,
+          Metadata: {
+            uploadedBy: decoded.uid,
+            originalFileName: file.name,
+          },
+        }),
+        { operation: 'put', objectKey }
+      )
+    } catch (err) {
+      return apiError(502, { error: 'Unable to store file at the moment.', code: 'STORAGE_ERROR', details: (err as Error)?.message })
+    }
 
-    const fileUrl = buildR2PublicUrl(objectKey)
+    const fileUrl = shouldUseSignedUrls()
+      ? await getR2SignedUrl(objectKey)
+      : buildR2PublicUrl(objectKey)
+    const normalizedWrite = enforceNoteSchemaOnWrite({
+      semester: meta.semester,
+      section: meta.section,
+      materialType: meta.materialType,
+      materialSequence: meta.materialSequence,
+    })
+
     const notesCollection = db.collection('notes')
     const docRef = await notesCollection.add({
-      name,
-      subject: normalizeForStorage(subject),
-      teacher: normalizeForStorage(teacher),
-      module: normalizeForStorage(teacher), // Legacy module field for backward compatibility
-      semester,
-      section: sectionRaw,
-      materialType: materialTypeRaw,
-      materialSequence: requiresSequence ? materialSequenceRaw : null,
+      name: meta.name,
+      subject: normalizeForStorage(meta.subject),
+      teacher: normalizeForStorage(meta.teacher),
+      module: normalizeForStorage(meta.teacher), // Legacy module field for backward compatibility
+      semester: normalizedWrite.semester,
+      section: normalizedWrite.section,
+      materialType: meta.materialType,
+      materialSequence: normalizedWrite.materialSequence,
       contributorName: contributorDisplayName,
       contributorDisplayName,
       uploaderUsername,
-      contributorMajor: contributorMajor || '',
+      contributorMajor: meta.contributorMajor || '',
       fileUrl,
       storageProvider: 'cloudflare-r2',
       storageBucket: bucket,
@@ -236,36 +208,77 @@ export async function POST(request: NextRequest) {
       metadata: {
         createdBy: decoded.email,
         createdAt: new Date().toISOString(),
-        section: sectionRaw,
-        materialType: materialTypeRaw,
-        materialSequence: requiresSequence ? materialSequenceRaw : null,
+        section: normalizedWrite.section,
+        materialType: meta.materialType,
+        materialSequence: normalizedWrite.materialSequence,
         contributorProfileId: decoded.uid,
-        contributorMajor: contributorMajor || '',
-        teacher: normalizeForStorage(teacher),
+        contributorMajor: meta.contributorMajor || '',
+        teacher: normalizeForStorage(meta.teacher),
       },
     })
 
-    return NextResponse.json(
+    const { ipAddress, userAgent } = getRequestContext(request)
+    await logAuditEvent({
+      action: 'NOTE_CREATE',
+      resource: docRef.id,
+      userId: decoded.uid,
+      ipAddress,
+      userAgent,
+      correlationId: span.correlationId,
+      details: { objectKey, bucket, size: file.size, contentType: normalizedContentType, keyDepth: getObjectKeyDepth(objectKey) },
+    })
+    await logSecurityEvent({
+      type: 'DATA_ACCESS',
+      userId: decoded.uid,
+      ipAddress,
+      userAgent,
+      endpoint: span.endpoint,
+      correlationId: span.correlationId,
+      details: { action: 'create_note', noteId: docRef.id },
+    })
+    const resp = NextResponse.json(
       {
         id: docRef.id,
         fileUrl,
       },
       { status: 201 }
     )
+
+    // Denormalize: increment contributor's notesCount on profile
+    try {
+      await profileRef.set({ notesCount: FieldValue.increment(1) }, { merge: true })
+    } catch (incErr) {
+      if (VERBOSE_LOGS) {
+        console.warn('[api/upload] Failed to increment notesCount for profile', incErr)
+      }
+    }
+
+    await endRouteSpan(span, 201)
+    // Apply rate limit headers
+    resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
+    resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
+    resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
+    return resp
   } catch (error) {
     console.error('[api/upload] Error occurred', error)
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : 'Unable to upload the document right now.',
-      },
-      { status: 500 }
-    )
+    const { ipAddress, userAgent, endpoint } = getRequestContext(request)
+    await logSecurityEvent({
+      type: 'ERROR',
+      severity: 'LOW',
+      ipAddress,
+      userAgent,
+      endpoint,
+      correlationId: startRouteSpan('upload.post.error', request).correlationId,
+      details: { message: error instanceof Error ? error.message : String(error) },
+    })
+    const details = error instanceof Error ? error.message : 'Unable to upload the document right now.'
+    return apiError(500, { error: 'Internal server error', code: 'SERVER_ERROR', details })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
+    const span = startRouteSpan('upload.delete', request)
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Missing authentication token.' }, { status: 401 })
@@ -322,12 +335,25 @@ export async function DELETE(request: NextRequest) {
       try {
         const r2Client = getR2Client()
         const bucket = storedBucket || getR2BucketName()
-        await r2Client.send(
-          new DeleteObjectCommand({
-            Bucket: bucket,
-            Key: storageKey,
+        try {
+          await r2SendWithRetry(
+            new DeleteObjectCommand({
+              Bucket: bucket,
+              Key: storageKey,
+            }),
+            { operation: 'delete', objectKey: storageKey }
+          )
+        } catch (error) {
+          console.error('[api/upload] Failed to delete R2 object', error)
+          // Log R2-specific deletion error
+          await logSecurityEvent({
+            type: 'R2_ERROR',
+            severity: 'MEDIUM',
+            correlationId: startRouteSpan('upload.delete.r2.error', request).correlationId,
+            details: { action: 'delete', storageKey, bucket, message: (error as Error)?.message },
           })
-        )
+          return NextResponse.json({ error: 'Unable to delete the stored file right now.' }, { status: 502 })
+        }
       } catch (error) {
         console.error('[api/upload] Failed to delete R2 object', error)
         return NextResponse.json({ error: 'Unable to delete the stored file right now.' }, { status: 502 })
@@ -336,9 +362,42 @@ export async function DELETE(request: NextRequest) {
 
     await noteRef.delete()
 
+    // Denormalize: decrement contributor's notesCount on profile
+    try {
+      const uploaderId = uploadedBy
+      if (uploaderId) {
+        const dbAdmin = getAdminDb()
+        const contributorProfileRef = dbAdmin.collection('profiles').doc(uploaderId)
+        await contributorProfileRef.set({ notesCount: FieldValue.increment(-1) }, { merge: true })
+      }
+    } catch (decErr) {
+      console.warn('[api/upload] Failed to decrement notesCount for profile', decErr)
+    }
+
+    const { ipAddress, userAgent } = getRequestContext(request)
+    await logAuditEvent({
+      action: 'NOTE_DELETE',
+      resource: noteId,
+      userId: decoded.uid,
+      ipAddress,
+      userAgent,
+      correlationId: span.correlationId,
+      details: { storageKey, bucket: storedBucket || getR2BucketName() },
+    })
+    await endRouteSpan(span, 200)
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (error) {
     console.error('[api/upload] DELETE error', error)
+    const { ipAddress, userAgent, endpoint } = getRequestContext(request)
+    await logSecurityEvent({
+      type: 'ERROR',
+      severity: 'LOW',
+      ipAddress,
+      userAgent,
+      endpoint,
+      correlationId: startRouteSpan('upload.delete.error', request).correlationId,
+      details: { message: error instanceof Error ? error.message : String(error) },
+    })
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Unable to delete the note right now.',

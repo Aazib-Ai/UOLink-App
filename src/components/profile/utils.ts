@@ -22,7 +22,7 @@ export const calculateStats = (profile: ProfileData | null, userNotes: NoteData[
         return { totalNotes: 0, uniqueSubjects: 0, uniqueTeachers: 0 }
     }
 
-    const totalNotes = userNotes.length
+    const totalNotes = typeof profile.notesCount === 'number' ? profile.notesCount : userNotes.length
     const uniqueSubjects = new Set(userNotes.map((note) => note.subject)).size
     const uniqueTeachers = new Set(userNotes.map((note) => note.teacher)).size
 
@@ -113,13 +113,14 @@ export const getProfileDisplayInfo = (profile: ProfileData | null) => {
     const joinedDate =
         profile?.createdAt?.toDate?.()?.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
     const showJoinDate = joinedDate && joinedDate !== 'Not set'
-    const firstName = profile?.fullName?.split(' ')?.[0] ?? ''
+    const baseName = profile?.displayName || profile?.fullName || profile?.username || ''
+    const firstName = baseName?.split(' ')?.[0] ?? ''
     const major = profile?.major ? toTitleCase(profile.major) : null
     const semester = profile?.semester ? toTitleCase(profile.semester) : null
     const section = profile?.section ? profile.section.toUpperCase() : null
     const heroTagline = major
         ? `${major}${semester ? ` / ${semester}` : ''}${section ? ` / Section ${section}` : ''}`
-        : `${firstName || profile?.fullName} is sharing knowledge with the community.`
+        : `${firstName || baseName} is sharing knowledge with the community.`
 
     return {
         joinedDate,

@@ -114,9 +114,18 @@ export default function ClientNavbar() {
             <button
               onClick={() => setIsUploadModalOpen(true)}
               className="text-black text-xs md:text-base uploadButton md:py-2 md:px-5 py-1.5 px-3 mr-2 md:mr-4 border-black border-[1px] rounded-full font-semibold hover:rounded-xl transition-all duration-300 whitespace-nowrap"
+              aria-label="Open upload dialog"
             >
               Upload
             </button>
+            {/* Timetable button - visible in header for authenticated users */}
+            <Link
+              href="/timetable"
+              aria-label="Open timetable"
+              className="text-white bg-[#90c639] hover:bg-[#7ab332] transition-all font-semibold text-xs md:text-base py-1.5 px-3 md:py-2 md:px-5 mr-2 md:mr-4 rounded-full border-[1px] border-[#7ab332] whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-[#90c639] focus:ring-offset-2"
+            >
+              Timetable
+            </Link>
             <div className='relative' ref={menuRef}>
               <button
                 onClick={toggleMenu}
