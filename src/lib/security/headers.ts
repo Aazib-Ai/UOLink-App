@@ -51,6 +51,9 @@ export function generateCSP(options: CSPOptions = {}): string {
   const scriptSrc: string[] = ["'self'"]
   if (nonce) scriptSrc.push(`'nonce-${nonce}'`)
   if (isDev) scriptSrc.push("'unsafe-eval'")
+  if (allowGoogleOAuth) {
+    scriptSrc.push('https://apis.google.com')
+  }
 
   const connectSrc = ["'self'", 'https:', isDev ? 'ws:' : '']
     .filter(Boolean)
@@ -59,6 +62,8 @@ export function generateCSP(options: CSPOptions = {}): string {
   const frameSrc = ["'self'"]
   if (allowGoogleOAuth) {
     frameSrc.push('https://accounts.google.com')
+    // Firebase auth domain is required for OAuth redirect flow
+    frameSrc.push('https://uolink-e3b24.firebaseapp.com')
   }
   // Allow embedding of trusted document viewers
   // - Cloudflare R2 public host for PDF assets
@@ -108,7 +113,7 @@ export function buildSecurityHeaders(options: SecurityHeadersOptions = {}): Head
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
     { key: 'X-Frame-Options', value: 'DENY' },
     { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), usb=(), payment=()' },
-    { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+    { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
   ]
 

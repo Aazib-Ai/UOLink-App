@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ok } from '@/lib/api/response'
 import { getAdminAuth } from '@/lib/firebaseAdmin'
 import { getR2BucketName, getR2Client, buildR2PublicUrl } from '@/lib/r2'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
@@ -79,10 +80,7 @@ export async function POST(request: NextRequest) {
       correlationId: span.correlationId,
       details: { storageKey: objectKey, contentType: file.type, size: file.size },
     })
-    const resp = NextResponse.json({
-      fileUrl,
-      storageKey: objectKey
-    }, { status: 201 })
+    const resp = ok({ fileUrl, storageKey: objectKey })
     resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
     resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
     resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
@@ -151,7 +149,7 @@ export async function DELETE(request: NextRequest) {
       details: { storageKey, bucket },
     })
     await endRouteSpan(span, 200)
-    return NextResponse.json({ success: true }, { status: 200 })
+    return ok({ success: true })
 
   } catch (error) {
     console.error('[api/profile-picture] Delete error occurred', error)

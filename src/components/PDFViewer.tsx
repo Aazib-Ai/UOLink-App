@@ -5,6 +5,18 @@ import { ExternalLink, LogIn, Maximize2, RefreshCw, Shield } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import PWADownloadButton from './PWADownloadButton'
+import PDFThumbnail from './PDFThumbnail'
+import dynamic from 'next/dynamic'
+
+// Lazy load the mobile PDF viewer
+const MobilePDFViewer = dynamic(() => import('./MobilePDFViewer'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-lime-500 border-t-transparent"></div>
+    </div>
+  ),
+})
 
 interface PDFViewerProps {
   url: string
@@ -155,24 +167,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
     }
   }, [isMobile, retryCount])
 
-
-
   const inlineUrl = useMemo(() => {
     if (!url) {
       return ''
     }
 
-    // Different viewers for mobile with fallback chain
+    // For mobile, use direct PDF URL
+    // Mobile browsers have built-in PDF viewers and don't need external viewers
+    // External viewers (Mozilla PDF.js, Google Docs) have CORS issues with R2/Firebase storage
     if (shouldUseMobileFallback) {
-      const viewers = [
-        `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`,
-        `https://r.jina.ai/http://${encodeURIComponent(url.replace(/^https?:\/\//, ''))}`,
-        `https://r.jina.ai/http://${encodeURIComponent(url)}`,
-        url // Direct URL as last resort
-      ]
-
-      // Cycle through viewers based on retry count
-      return viewers[retryCount % viewers.length]
+      return url
     }
 
     if (treatAsAuthenticated) {
@@ -182,7 +186,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
     const separator = url.includes('#') ? '&' : '#'
     const fragment = 'toolbar=0&navpanes=0&scrollbar=1'
     return `${url}${separator}${fragment}`
-  }, [treatAsAuthenticated, url, shouldUseMobileFallback, retryCount])
+  }, [treatAsAuthenticated, url, shouldUseMobileFallback])
+
+  // Use custom mobile viewer for mobile devices
+  if (isMobile && url) {
+    return <MobilePDFViewer url={url} title={title} />
+  }
 
   return (
     <div className="w-full max-w-full overflow-x-hidden">
@@ -288,12 +297,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
 
                   <div className="space-y-2">
                     <p className="text-xs sm:text-sm font-medium text-gray-900">{error}</p>
-
-                    {shouldUseMobileFallback && (
-                      <p className="text-xs text-amber-600">
-                        {retryCount > 0 ? `Trying viewer ${retryCount + 1}/3` : 'Using optimized mobile viewer'}
-                      </p>
-                    )}
                   </div>
 
                   <div className="flex flex-col gap-2 sm:flex-row sm:gap-2 justify-center">
@@ -322,8 +325,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, title }) => {
                   </div>
 
                   {isMobile && (
+                    <div className="mt-3 flex justify-center">
+                      <PDFThumbnail url={url} width={280} height={380} />
+                    </div>
+                  )}
+
+                  {isMobile && (
                     <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-2">
-                      <p className="text-xs text-blue-700">Tip: For the best experience on mobile, open this note in a new tab.</p>
+                      <p className="text-xs text-blue-700">Tip: For best mobile experience, open in a new tab.</p>
                     </div>
                   )}
 

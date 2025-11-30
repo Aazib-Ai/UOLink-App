@@ -44,7 +44,6 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
         setProgress(newProgress)
         
         const phaseNames = {
-            'username_generation': 'Generating Usernames',
             'legacy_cleanup': 'Cleaning Legacy Fields',
             'validation': 'Validating Results',
             'complete': 'Complete'
@@ -52,11 +51,7 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
         
         addLog(`Phase: ${phaseNames[newProgress.phase]}`)
         
-        if (newProgress.usernameMigration) {
-            const um = newProgress.usernameMigration
-            const percentage = um.totalUsers > 0 ? Math.round((um.processedUsers / um.totalUsers) * 100) : 0
-            addLog(`Username Migration: ${percentage}% (${um.processedUsers}/${um.totalUsers}) - Success: ${um.successfulMigrations}, Failed: ${um.failedMigrations}`)
-        }
+        
         
         if (newProgress.legacyCleanup) {
             const lc = newProgress.legacyCleanup
@@ -83,9 +78,7 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
             addLog(`Complete system migration finished!`)
             addLog(`Phase: ${finalProgress.phase}`)
             
-            if (finalProgress.usernameMigration) {
-                addLog(`Username Migration - Success: ${finalProgress.usernameMigration.successfulMigrations}, Failed: ${finalProgress.usernameMigration.failedMigrations}`)
-            }
+            
             
             if (finalProgress.legacyCleanup) {
                 addLog(`Legacy Cleanup - Processed: ${finalProgress.legacyCleanup.processedProfiles} profiles, Cleaned: ${finalProgress.legacyCleanup.cleanedFields} fields`)
@@ -157,13 +150,7 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
         
         let baseProgress = (currentPhaseIndex / phases.length) * 100
         
-        // Add sub-progress for current phase
-        if (progress.usernameMigration && progress.phase === 'username_generation') {
-            const subProgress = progress.usernameMigration.totalUsers > 0 
-                ? (progress.usernameMigration.processedUsers / progress.usernameMigration.totalUsers) * (100 / phases.length)
-                : 0
-            baseProgress += subProgress
-        }
+        // No sub-progress phases
         
         return Math.round(baseProgress)
     }
@@ -191,8 +178,7 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
             <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete System Migration</h2>
                 <p className="text-gray-600">
-                    Comprehensive migration that generates usernames for all users, cleans up legacy fields, 
-                    and validates the entire system. This is the recommended approach for production deployment.
+                    Comprehensive migration that cleans up legacy fields and validates the entire system.
                 </p>
             </div>
 
@@ -273,30 +259,7 @@ export default function CompleteSystemMigrationRunner({ onComplete }: CompleteSy
                             Current Phase: {progress.phase.replace('_', ' ').toUpperCase()}
                         </div>
                         
-                        {/* Username Migration Progress */}
-                        {progress.usernameMigration && (
-                            <div className="mb-3 p-3 bg-white rounded border">
-                                <h4 className="font-medium text-sm mb-2">Username Generation</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                    <div>
-                                        <div className="text-gray-600">Total</div>
-                                        <div className="font-semibold">{progress.usernameMigration.totalUsers}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-gray-600">Processed</div>
-                                        <div className="font-semibold">{progress.usernameMigration.processedUsers}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-green-600">Success</div>
-                                        <div className="font-semibold">{progress.usernameMigration.successfulMigrations}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-red-600">Failed</div>
-                                        <div className="font-semibold">{progress.usernameMigration.failedMigrations}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        
 
                         {/* Legacy Cleanup Progress */}
                         {progress.legacyCleanup && (

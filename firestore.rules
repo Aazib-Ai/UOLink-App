@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Allow only specific user-editable fields; block server-controlled fields
+    function allowedProfileUpdateKeys() {
+      return [
+        'major',
+        'semester',
+        'section',
+        'bio',
+        'about',
+        'skills',
+        'githubUrl',
+        'linkedinUrl',
+        'instagramUrl',
+        'facebookUrl',
+        'profilePicture'
+      ];
+    }
+
+    // Prevent privileged field modifications and enforce basic field-level validation
+    function isProfileUpdateAllowed() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+
+      // Only allow edits to whitelisted fields
+      return changed.hasOnly(allowedProfileUpdateKeys())
+        // If bio is present, ensure it is a string and within 1000 chars
+        && (!request.resource.data.keys().hasAny(['bio'])
+            || (request.resource.data.bio is string && request.resource.data.bio.matches('^.{0,1000}$')))
+        // If skills are present, ensure it is a list with reasonable length
+        && (!request.resource.data.keys().hasAny(['skills'])
+            || (request.resource.data.skills is list && request.resource.data.skills.size() <= 50))
+        // Ensure uid remains consistent
+        && (!request.resource.data.keys().hasAny(['uid']) || request.resource.data.uid == resource.data.uid);
+    }
+
+    // Profiles: public reads; owner-only writes with field constraints
+    match /profiles/{uid} {
+      allow read: if true;
+      // Creation is server-side only
+      allow create: if false;
+      allow update, delete: if isOwner(uid) && isProfileUpdateAllowed();
+    }
+
+    // Notes: reads allowed; writes require authentication
+    match /notes/{noteId} {
+      allow read: if true;
+      // Creation is server-side only
+      allow create: if false;
+      // Updates and deletes only by the owner
+      allow update, delete: if isSignedIn() && resource.data.uploadedBy == request.auth.uid;
+
+      // Comments: block client-side writes; allow reads
+      match /comments/{commentId} {
+        allow read: if true;
+        allow write: if false;
+
+        // Replies: block client-side writes; allow reads
+        match /replies/{replyId} {
+          allow read: if true;
+          allow write: if false;
+        }
+      }
+    }
+
+    // User-specific subcollections: owner-only access
+    match /users/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

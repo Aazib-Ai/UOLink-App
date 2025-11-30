@@ -274,18 +274,12 @@ export function useContributionsData() {
     const targetNote = userNotes.find((note) => note.id === noteId)
     if (!targetNote) return
 
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm(`Remove "${targetNote.name}" from the shared library?`)
-      if (!confirmed) return
-    }
-
     setError(null)
     setNoteActionState({ id: noteId, type: 'delete' })
 
     try {
       const response = await contributionsService.deleteContribution(noteId)
       if (response.success) {
-        // Update local state optimistically
         const updatedNotes = userNotes.filter((note) => note.id !== noteId)
         setUserNotes(updatedNotes)
       } else {

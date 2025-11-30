@@ -5,7 +5,6 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import PDFViewerLazy from '@/components/PDFViewerLazy'
-import CommentSection from '@/components/CommentSection'
 import ReportButton from '@/components/ReportButton'
 import { buildR2PublicUrlFromBase, deriveR2ObjectKey, isR2LikeHost } from '@/lib/r2-shared'
 import { useAuth } from '@/contexts/AuthContext'
@@ -507,9 +506,7 @@ function NotePageContent() {
           )}
 
           
-          <section className="mt-5 xs:mt-6 rounded-2xl xs:rounded-3xl border border-lime-100 bg-white p-4 xs:p-5 shadow-sm sm:mt-8 sm:p-8 w-full">
-            <CommentSection noteId={noteData.id || ''} />
-          </section>
+
 
           <div className="mt-5 xs:mt-6 flex flex-col xs:flex-row flex-wrap justify-center gap-2 xs:gap-3 sm:mt-8 w-full">
             <Link

@@ -50,7 +50,7 @@ export function isSuspiciousUserAgent(ua: string | null): boolean {
 
 export function isAllowedEmail(email?: string | null): boolean {
     if (!email) return false
-    const allowed = /^\d{8}@student\.uol\.edu\.pk$/
+    const allowed = /^[^@]*\d{5,}@(student\.)?uol\.edu\.pk$/i
     return allowed.test(email)
 }
 

@@ -1,0 +1,58 @@
+[
+  {
+    "day": "Monday",
+    "department": "CS & IT",
+    "sub_department": "Computer Science",
+    "time_slot": "08:30-10:00",
+    "room_name": "Unknown/TBD",
+    "subject": "PF",
+    "course_code": "",
+    "program": "BSCS",
+    "semester": "1",
+    "section": "",
+    "teacher_name": "",
+    "teacher_sap_id": "",
+    "raw_text": "PF (BSCS 1st A / BSSE 1st A)",
+    "is_merged_class": "true",
+    "merged_programs": [
+      {
+        "program": "BSCS",
+        "semester": "1",
+        "section": ""
+      },
+      {
+        "program": "BSSE",
+        "semester": "1",
+        "section": ""
+      }
+    ]
+  },
+  {
+    "day": "Monday",
+    "department": "CS & IT",
+    "sub_department": "Software Engineering",
+    "time_slot": "08:30-10:00",
+    "room_name": "Unknown/TBD",
+    "subject": "PF",
+    "course_code": "",
+    "program": "BSSE",
+    "semester": "1",
+    "section": "",
+    "teacher_name": "",
+    "teacher_sap_id": "",
+    "raw_text": "PF (BSCS 1st A / BSSE 1st A)",
+    "is_merged_class": "true",
+    "merged_programs": [
+      {
+        "program": "BSCS",
+        "semester": "1",
+        "section": ""
+      },
+      {
+        "program": "BSSE",
+        "semester": "1",
+        "section": ""
+      }
+    ]
+  }
+]

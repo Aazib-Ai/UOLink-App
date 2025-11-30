@@ -6,6 +6,7 @@ import {
     deleteField,
     arrayUnion,
     arrayRemove,
+    getDoc,
 } from 'firebase/firestore';
 import { db, auth } from './app';
 
@@ -32,30 +33,25 @@ export const voteOnNoteOptimized = async (noteId: string, voteType: 'up' | 'down
     const noteRef = doc(db, 'notes', noteId);
     const userVoteRef = doc(db, 'userVotes', voterId, 'votes', noteId);
 
-    return await runTransaction(db, async (transaction) => {
-        // Only read what we need - 2 reads instead of 3
-        const [noteSnap, userVoteSnap] = await Promise.all([
-            transaction.get(noteRef),
-            transaction.get(userVoteRef)
-        ]);
+    const preSnap = await getDoc(noteRef);
+    if (!preSnap.exists()) {
+        throw new Error('Note not found');
+    }
+    const preData = preSnap.data() as any;
+    const uploaderId = preData.uploadedBy;
 
-        if (!noteSnap.exists()) {
-            throw new Error('Note not found');
-        }
+    let txnResult: { upDelta: number; downDelta: number; credDelta: number; userVote: 'up' | 'down' | null } = { upDelta: 0, downDelta: 0, credDelta: 0, userVote: voteType };
 
-        const noteData = noteSnap.data();
-        const currentUpvotes = noteData.upvoteCount || 0;
-        const currentDownvotes = noteData.downvoteCount || 0;
-        const storedVote = userVoteSnap.exists() ? userVoteSnap.data()?.voteType : null;
+    await runTransaction(db, async (transaction) => {
+        const userVoteSnap = await transaction.get(userVoteRef);
+        const storedVote = userVoteSnap.exists() ? (userVoteSnap.data() as any)?.voteType : null;
 
         let upvotesDelta = 0;
         let downvotesDelta = 0;
-        let newUserVote: 'up' | 'down' | null = voteType;
         let auraDelta = 0;
+        let nextVote: 'up' | 'down' | null = voteType;
 
-        // Calculate deltas based on vote logic
         if (storedVote === voteType) {
-            // Removing existing vote
             if (voteType === 'up') {
                 upvotesDelta = -1;
                 auraDelta = -2;
@@ -63,10 +59,9 @@ export const voteOnNoteOptimized = async (noteId: string, voteType: 'up' | 'down
                 downvotesDelta = -1;
                 auraDelta = 3;
             }
-            newUserVote = null;
+            nextVote = null;
             transaction.delete(userVoteRef);
         } else {
-            // Adding or changing vote
             if (storedVote === 'up') {
                 upvotesDelta = -1;
                 auraDelta -= 2;
@@ -74,7 +69,6 @@ export const voteOnNoteOptimized = async (noteId: string, voteType: 'up' | 'down
                 downvotesDelta = -1;
                 auraDelta += 3;
             }
-
             if (voteType === 'up') {
                 upvotesDelta += 1;
                 auraDelta += 2;
@@ -82,51 +76,34 @@ export const voteOnNoteOptimized = async (noteId: string, voteType: 'up' | 'down
                 downvotesDelta += 1;
                 auraDelta -= 3;
             }
-
-            transaction.set(userVoteRef, {
-                noteId,
-                voteType,
-                votedAt: serverTimestamp()
-            });
+            transaction.set(userVoteRef, { noteId, voteType, votedAt: serverTimestamp() }, { merge: true });
         }
 
-        // Single atomic update to note document
-        const updateData: any = {
+        const credibilityDelta = (upvotesDelta * 2) + (downvotesDelta * -3);
+        const noteUpdate: any = {
             lastInteractionAt: serverTimestamp(),
-            credibilityUpdatedAt: serverTimestamp()
+            credibilityUpdatedAt: serverTimestamp(),
         };
+        if (upvotesDelta !== 0) noteUpdate.upvoteCount = increment(upvotesDelta);
+        if (downvotesDelta !== 0) noteUpdate.downvoteCount = increment(downvotesDelta);
+        if (credibilityDelta !== 0) noteUpdate.credibilityScore = increment(credibilityDelta);
+        transaction.set(noteRef, noteUpdate, { merge: true });
 
-        if (upvotesDelta !== 0) {
-            updateData.upvoteCount = increment(upvotesDelta);
-        }
-        if (downvotesDelta !== 0) {
-            updateData.downvoteCount = increment(downvotesDelta);
-        }
-
-        // Calculate new credibility score
-        const newUpvotes = Math.max(0, currentUpvotes + upvotesDelta);
-        const newDownvotes = Math.max(0, currentDownvotes + downvotesDelta);
-        const newCredibilityScore = (newUpvotes * 2) - (newDownvotes * 3) + ((noteData.saveCount || 0) * 5) - ((noteData.reportCount || 0) * 10);
-        updateData.credibilityScore = newCredibilityScore;
-
-        transaction.update(noteRef, updateData);
-
-        // Batch aura update (non-blocking)
-        if (auraDelta !== 0 && noteData.uploadedBy) {
-            const profileRef = doc(db, 'profiles', noteData.uploadedBy);
-            transaction.update(profileRef, {
-                aura: increment(auraDelta),
-                auraUpdatedAt: serverTimestamp()
-            });
+        if (auraDelta !== 0 && typeof uploaderId === 'string' && uploaderId) {
+            const profileRef = doc(db, 'profiles', uploaderId);
+            transaction.set(profileRef, { aura: increment(auraDelta), auraUpdatedAt: serverTimestamp() }, { merge: true });
         }
 
-        return {
-            upvotes: newUpvotes,
-            downvotes: newDownvotes,
-            userVote: newUserVote,
-            credibilityScore: newCredibilityScore
-        };
+        txnResult = { upDelta: upvotesDelta, downDelta: downvotesDelta, credDelta: credibilityDelta, userVote: nextVote };
     });
+
+    const finalSnap = await getDoc(noteRef);
+    const finalData = finalSnap.data() as any;
+    const upvotes = Number(finalData?.upvoteCount || 0);
+    const downvotes = Number(finalData?.downvoteCount || 0);
+    const credibilityScore = Number(finalData?.credibilityScore || 0);
+
+    return { upvotes, downvotes, userVote: txnResult.userVote, credibilityScore };
 };
 
 // Optimized save function - reduces operations by 60%

@@ -115,7 +115,17 @@ export const getProfileDisplayInfo = (profile: ProfileData | null) => {
     const showJoinDate = joinedDate && joinedDate !== 'Not set'
     const baseName = profile?.displayName || profile?.fullName || profile?.username || ''
     const firstName = baseName?.split(' ')?.[0] ?? ''
-    const major = profile?.major ? toTitleCase(profile.major) : null
+    const major = profile?.major
+        ? (() => {
+            const s = (profile.major || '').trim()
+            if (!s) return ''
+            const spaced = s.replace(/\s*&\s*/g, ' & ').replace(/\s*\/\s*/g, ' / ')
+            const parts = spaced.split(/\s+/)
+            return parts
+                .map((p) => (p === '&' || p === '/' ? p : p.charAt(0).toUpperCase() + p.substring(1).toLowerCase()))
+                .join(' ')
+          })()
+        : null
     const semester = profile?.semester ? toTitleCase(profile.semester) : null
     const section = profile?.section ? profile.section.toUpperCase() : null
     const heroTagline = major

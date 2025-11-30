@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/authenticate'
 import { getAdminDb } from '@/lib/firebaseAdmin'
-import { apiErrorByKey } from '@/lib/api/errors'
+import { apiErrorByKey, apiError } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { logRequestStart, logRequestEnd, logApiError } from '@/lib/api/logger'
 import { enforceRateLimitOr429, rateLimitKeyByUser } from '@/lib/security/rateLimit'
@@ -16,6 +16,12 @@ export async function DELETE(
     if (!noteId || !commentId) {
       logRequestEnd(ctx, 400)
       return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing noteId or commentId')
+    }
+
+    const commentsDisabled = (process.env.COMMENTS_ENABLED === 'false') || (process.env.COMMENTS_DISABLED === 'true')
+    if (commentsDisabled) {
+      logRequestEnd(ctx, 503)
+      return apiError(503, { error: 'Service unavailable', code: 'SERVICE_DISABLED', details: 'Comments are temporarily disabled' })
     }
 
     // Per-user comment deletion limit: 10/min

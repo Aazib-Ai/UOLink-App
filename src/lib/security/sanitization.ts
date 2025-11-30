@@ -24,6 +24,12 @@ export function safeText(input: string, opts: SanitizationOptions = {}): string 
     return escapeHtml(clamped)
 }
 
+export function safePlainText(input: string, opts: SanitizationOptions = {}): string {
+    const max = Math.max(1, opts.maxLength ?? DEFAULT_MAX)
+    const trimmed = (input || '').replace(/[\u0000-\u001F\u007F]/g, '').trim()
+    return trimmed.length > max ? trimmed.slice(0, max) : trimmed
+}
+
 export function getEmailPrefix(email?: string | null): string | undefined {
     if (!email || typeof email !== 'string') return undefined
     const at = email.indexOf('@')
@@ -76,9 +82,9 @@ export function toPublicProfile(profile: any): any {
         emailPrefix: emailPrefix ? safe(emailPrefix, 100) : undefined,
         initials,
         // Public profile fields (text sanitized defensively)
-        major: safe(profile.major, 100),
-        semester: typeof profile.semester === 'string' ? safe(profile.semester, 20) : profile.semester,
-        section: safe(profile.section, 10),
+        major: typeof profile.major === 'string' ? safePlainText(profile.major, { maxLength: 100 }) : profile.major,
+        semester: typeof profile.semester === 'string' ? safePlainText(profile.semester, { maxLength: 20 }) : profile.semester,
+        section: typeof profile.section === 'string' ? safePlainText(profile.section, { maxLength: 10 }) : profile.section,
         bio: safe(profile.bio),
         about: safe(profile.about),
         skills: Array.isArray(profile.skills) ? profile.skills.map((s: any) => safe(s, 50)).filter(Boolean) : [],

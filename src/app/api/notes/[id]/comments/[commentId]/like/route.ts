@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { withAuth } from '@/lib/auth/authenticate'
 import { getAdminDb } from '@/lib/firebaseAdmin'
-import { apiErrorByKey } from '@/lib/api/errors'
+import { apiErrorByKey, apiError } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { FieldValue } from 'firebase-admin/firestore'
 import { clampNonNegative, toNumber } from '@/lib/data/common'
@@ -18,6 +18,12 @@ export async function POST(
     if (!noteId || !commentId) {
       logRequestEnd(ctx, 400)
       return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing noteId or commentId')
+    }
+
+    const commentsDisabled = (process.env.COMMENTS_DISABLED !== 'false') && (process.env.COMMENTS_ENABLED !== 'true')
+    if (commentsDisabled) {
+      logRequestEnd(ctx, 503)
+      return apiError(503, { error: 'Service unavailable', code: 'SERVICE_DISABLED', details: 'Comments are temporarily disabled' })
     }
 
     // 2s cooldown per user+comment to debounce

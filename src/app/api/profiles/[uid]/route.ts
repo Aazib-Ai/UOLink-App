@@ -98,6 +98,15 @@ export async function PATCH(
                 return apiErrorByKey(400, 'CONTENT_VIOLATION', 'Your profile contains content that violates policy.')
             }
 
+            // Validate profile picture storage key ownership if provided
+            if (typeof body.profilePictureStorageKey === 'string' && body.profilePictureStorageKey) {
+                const key = body.profilePictureStorageKey.trim()
+                if (!key.startsWith(`profile-pictures/${user!.uid}-`)) {
+                    await endRouteSpan(span, 400)
+                    return apiErrorByKey(400, 'VALIDATION_ERROR', 'Invalid profile picture storage key for this user')
+                }
+            }
+
             const fullName = body.fullName || ''
             const updateData: Record<string, any> = {
                 fullName,
@@ -158,4 +167,3 @@ export async function PATCH(
         }
     )(request)
 }
-

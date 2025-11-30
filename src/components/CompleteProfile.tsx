@@ -8,15 +8,8 @@ import CustomSelect from './CustomSelect'
 import Navbar from './Navbar'
 import { uploadProfilePicture, deleteProfilePicture } from '@/lib/api/profile-picture'
 import { updateProfile } from '@/lib/api/profiles'
-import { checkUsername as checkUsernameApi, changeUsername as changeUsernameApi } from '@/lib/api/username'
 import { MAJOR_NAMES } from '@/constants/universityData'
-import { 
-  generateBaseUsername, 
-  generateUsernameWithConflicts 
-} from '@/lib/username/generation'
-// Username change handled via server APIs
 import { generateProfileUrl } from '@/lib/firebase/profile-resolver'
-import { checkAvailability } from '@/lib/firebase'
 
 interface ProfileData {
   fullName: string
@@ -75,52 +68,24 @@ export default function CompleteProfile() {
     }
   }, [user, loading, router])
 
-  // Generate username when full name changes
+  // Derive roll number from email once user is available
   useEffect(() => {
-    const generateUsernamePreview = async () => {
-      if (!profileData.fullName.trim()) {
-        setProfileData(prev => ({ 
-          ...prev, 
-          generatedUsername: undefined, 
-          profileUrl: undefined 
-        }))
-        return
-      }
-
-      setIsGeneratingUsername(true)
-      
-      try {
-        // Generate base username from full name
-        const baseUsername = generateBaseUsername(profileData.fullName.trim())
-        
-        // Check if it's available
-        const isAvailable = await checkAvailability(baseUsername)
-        
-        let finalUsername = baseUsername
-        if (!isAvailable) {
-          // Generate with conflict resolution (this is just for preview)
-          finalUsername = `${baseUsername}-${Math.floor(Math.random() * 100)}`
-        }
-        
-        const profileUrl = generateProfileUrl(finalUsername)
-        
-        setProfileData(prev => ({ 
-          ...prev, 
-          generatedUsername: finalUsername,
-          profileUrl: profileUrl || undefined
-        }))
-      } catch (error) {
-        console.error('Error generating username preview:', error)
-        // Don't show error to user for preview generation
-      } finally {
-        setIsGeneratingUsername(false)
-      }
+    if (!user?.email) return
+    setIsGeneratingUsername(true)
+    try {
+      const prefix = (user.email || '').split('@')[0] || ''
+      const matches = Array.from(prefix.matchAll(/\d+/g)).map(m => m[0])
+      const roll = matches.length ? matches.reduce((a, b) => (b.length > a.length ? b : a)) : ''
+      const url = roll ? generateProfileUrl(roll) : null
+      setProfileData(prev => ({
+        ...prev,
+        generatedUsername: roll || undefined,
+        profileUrl: url || undefined,
+      }))
+    } finally {
+      setIsGeneratingUsername(false)
     }
-
-    // Debounce username generation
-    const timeoutId = setTimeout(generateUsernamePreview, 500)
-    return () => clearTimeout(timeoutId)
-  }, [profileData.fullName])
+  }, [user?.email])
 
   useEffect(() => {
     return () => {
@@ -216,34 +181,21 @@ export default function CompleteProfile() {
         return
       }
 
-      // Generate and reserve username via server API
-      const baseUsername = generateBaseUsername(profileData.fullName.trim())
-      let finalUsername = baseUsername
-      
-      // Check availability and generate with conflicts if needed
-      const availabilityRes = await checkUsernameApi(baseUsername)
-      const isAvailable = 'data' in availabilityRes ? availabilityRes.data.available : false
-      if (!isAvailable) {
-        // Use a more sophisticated conflict resolution
-        const existingUsernames = new Set<string>() // In real implementation, this would be populated
-        finalUsername = generateUsernameWithConflicts(
-          profileData.fullName.trim(),
-          existingUsernames
-        )
-      }
-
-      // Reserve/change the username via server API
-      const changeRes = await changeUsernameApi(finalUsername)
-      if ('error' in changeRes) {
-        throw new Error(changeRes.details || changeRes.error)
-      }
+      // Username is auto-assigned from email; no changes performed here
 
       // Create/update the profile via server API
+      const sanitizedSemester = (() => {
+        const raw = (profileData.semester || '').trim()
+        if (!raw) return ''
+        const match = raw.match(/(\d+)/)
+        return match ? match[1] : raw
+      })()
+      const sanitizedSection = (profileData.section || '').trim().toUpperCase()
       const apiRes = await updateProfile(user.uid, {
         fullName: profileData.fullName.trim(),
         major: profileData.major,
-        semester: profileData.semester,
-        section: profileData.section,
+        semester: sanitizedSemester,
+        section: sanitizedSection,
         bio: '',
         about: '',
         skills: [],
@@ -258,11 +210,14 @@ export default function CompleteProfile() {
         throw new Error(apiRes.error)
       }
 
-      // Update profile data with final username for display
-      setProfileData(prev => ({ 
-        ...prev, 
-        generatedUsername: finalUsername,
-        profileUrl: generateProfileUrl(finalUsername) || undefined
+      // Ensure preview reflects roll number
+      const prefix = (user.email || '').split('@')[0] || ''
+      const matches = Array.from(prefix.matchAll(/\d+/g)).map(m => m[0])
+      const roll = matches.length ? matches.reduce((a, b) => (b.length > a.length ? b : a)) : ''
+      setProfileData(prev => ({
+        ...prev,
+        generatedUsername: roll || undefined,
+        profileUrl: (roll ? generateProfileUrl(roll) : undefined) || undefined,
       }))
 
       // Show success animation
@@ -275,11 +230,7 @@ export default function CompleteProfile() {
 
     } catch (err) {
       console.error('Profile creation error:', err)
-      if (err instanceof Error && err.message.includes('Username is already taken')) {
-        setError('The generated username is no longer available. Please try again.')
-      } else {
-        setError('Failed to save profile. Please try again.')
-      }
+      setError('Failed to save profile. Please try again.')
       setShowSuccessAnimation(false)
     } finally {
       setIsSubmitting(false)

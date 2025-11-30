@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiErrorByKey } from '@/lib/api/errors'
+import JSZip from 'jszip'
 import {
   SUPPORTED_UPLOAD_EXTENSIONS,
   SUPPORTED_UPLOAD_MIME_TYPES,
@@ -105,6 +106,15 @@ export function sanitizeUrl(input?: string, maxLen = 2048): string {
   }
 }
 
+export function sanitizeFilename(input?: string, maxLen = 128): string {
+  const raw = (input || '').replace(/[\r\n\t]/g, '').trim()
+  const clamped = raw.length > maxLen ? raw.slice(0, maxLen) : raw
+  const safe = clamped.replace(/[^A-Za-z0-9._-]/g, '_')
+  const noDots = safe.replace(/\.{2,}/g, '.')
+  const cleaned = noDots || 'document'
+  return cleaned
+}
+
 // Generic JSON request validation helper
 export async function validateRequestJSON<T>(request: NextRequest, schema: z.ZodSchema<T>): Promise<{ ok: boolean; data?: T; error?: NextResponse }> {
   let body: unknown
@@ -167,6 +177,48 @@ export function validateFileUpload(file: Pick<File, 'name' | 'size' | 'type'>, c
       contentType: type || mimeMatch?.mimeTypes[0] || extMatch?.mimeTypes[0] || 'application/octet-stream',
     },
   }
+}
+
+export async function detectUploadDescriptorFromBuffer(fileName: string, buffer: Buffer): Promise<{ extension: string; contentType: string } | null> {
+  if (!buffer || buffer.length < 4) return null
+  const pdfSig = buffer.slice(0, 4).toString('ascii')
+  if (pdfSig === '%PDF') {
+    return { extension: 'pdf', contentType: 'application/pdf' }
+  }
+  const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B
+  if (isZip) {
+    try {
+      const zip = await JSZip.loadAsync(buffer)
+      const ctFile = zip.file('[Content_Types].xml')
+      if (!ctFile) return null
+      const xml = await ctFile.async('string')
+      if (xml.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+        return { extension: 'docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+      }
+      if (xml.includes('application/vnd.openxmlformats-officedocument.presentationml.presentation')) {
+        return { extension: 'pptx', contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
+      }
+      if (xml.includes('application/vnd.openxmlformats-officedocument.presentationml.slideshow')) {
+        return { extension: 'ppsx', contentType: 'application/vnd.openxmlformats-officedocument.presentationml.slideshow' }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+  const oleSig = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+  const isOle = buffer.length >= 8 && buffer.slice(0, 8).equals(oleSig)
+  if (isOle) {
+    const name = (fileName || '').toLowerCase()
+    if (name.endsWith('.doc')) {
+      return { extension: 'doc', contentType: 'application/msword' }
+    }
+    if (name.endsWith('.ppt')) {
+      return { extension: 'ppt', contentType: 'application/vnd.ms-powerpoint' }
+    }
+    return null
+  }
+  return null
 }
 
 // ===== Zod Schemas for Endpoints =====
@@ -235,6 +287,9 @@ export function parseAndValidateUploadFormData(formData: FormData): ValidationRe
   for (const key of ['name', 'subject', 'teacher', 'semester', 'section', 'materialType', 'materialSequence', 'contributorName', 'contributorMajor']) {
     const v = formData.get(key)
     obj[key] = typeof v === 'string' ? v.trim() : v
+  }
+  if (obj['materialSequence'] == null || obj['materialSequence'] === '') {
+    delete obj['materialSequence']
   }
   const parsed = uploadMetadataSchema.safeParse(obj)
   if (!parsed.success) {

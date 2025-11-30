@@ -1,14 +1,4 @@
-import {
-    collection,
-    getDocs,
-    query,
-    where,
-    orderBy,
-    limit,
-    startAfter,
-    DocumentSnapshot
-} from 'firebase/firestore'
-import { db } from './app'
+import { where, orderBy, startAfter, DocumentSnapshot, QueryConstraint } from 'firebase/firestore'
 import {
     dedupedFetch,
     batchFetchProfiles,
@@ -22,9 +12,10 @@ interface OptimizedQueryOptions {
     pageSize?: number
     enableCaching?: boolean
     cacheTTL?: number
-    filters?: Record<string, any>
+    filters?: Record<string, string | number | boolean | null | undefined>
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
+    startAfterDoc?: DocumentSnapshot
 }
 
 interface OptimizedQueryResult<T> {
@@ -37,7 +28,6 @@ interface OptimizedQueryResult<T> {
 
 class OptimizedDataService {
     private static instance: OptimizedDataService
-    private requestQueue: Map<string, Promise<any>> = new Map()
 
     static getInstance(): OptimizedDataService {
         if (!OptimizedDataService.instance) {
@@ -54,21 +44,28 @@ class OptimizedDataService {
             cacheTTL = 60000, // 1 minute
             filters = {},
             sortBy = 'uploadedAt',
-            sortOrder = 'desc'
+            sortOrder = 'desc',
+            startAfterDoc
         } = options
 
-        const cacheKey = this.generateCacheKey('notes', { filters, sortBy, sortOrder, pageSize })
+        const cacheKey = this.generateCacheKey('notes', { filters, sortBy, sortOrder, pageSize, startAfterId: startAfterDoc?.id })
 
         try {
             const fetchFn = async () => {
-                const constraints: any[] = [orderBy(sortBy, sortOrder)]
+                const constraints: QueryConstraint[] = [orderBy(sortBy, sortOrder)]
 
                 // Add filter constraints
-                Object.entries(filters).forEach(([key, value]) => {
-                    if (value && value !== '') {
+                Object.entries(filters).forEach(([key, value]: [string, string | number | boolean | null | undefined]) => {
+                    if (typeof value === 'string') {
+                        if (value !== '') constraints.push(where(key, '==', value))
+                    } else if (typeof value === 'number' || typeof value === 'boolean') {
                         constraints.push(where(key, '==', value))
                     }
                 })
+
+                if (startAfterDoc) {
+                    constraints.push(startAfter(startAfterDoc))
+                }
 
                 const result = await dedupedFetch(
                     {
@@ -98,7 +95,7 @@ class OptimizedDataService {
     }
 
     // Batch fetch profiles for multiple contributors
-    async fetchProfilesForNotes(notes: Note[]): Promise<Record<string, any>> {
+    async fetchProfilesForNotes(notes: Note[]): Promise<Record<string, unknown>> {
         const contributorIds = notes
             .map(note => (typeof note.uploadedBy === 'string' ? note.uploadedBy : ''))
             .filter(Boolean)
@@ -212,13 +209,13 @@ class OptimizedDataService {
     }
 
     // Generate consistent cache keys
-    private generateCacheKey(type: string, params: Record<string, any>): string {
+    private generateCacheKey(type: string, params: Record<string, unknown>): string {
         const sortedParams = Object.keys(params)
             .sort()
             .reduce((result, key) => {
                 result[key] = params[key]
                 return result
-            }, {} as Record<string, any>)
+            }, {} as Record<string, unknown>)
 
         return `${type}_${JSON.stringify(sortedParams)}`
     }
@@ -227,7 +224,7 @@ class OptimizedDataService {
     getCacheStats(): { size: number; keys: string[] } {
         return {
             size: dataCache.size(),
-            keys: Array.from(dataCache['cache']?.keys() || [])
+            keys: []
         }
     }
 }

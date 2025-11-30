@@ -157,11 +157,9 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
   return (
     <div className="relative w-full" aria-disabled={disabled}>
       <div
-        className={`border ${isOpen ? 'border-[#90c639] bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'} transition-all duration-200 rounded-xl ${
-          size === 'sm' ? 'p-2 md:p-3' : size === 'lg' ? 'p-5' : 'p-3 md:p-4'
-        } bg-white shadow-md ${
-          disabled ? 'cursor-not-allowed opacity-60 hover:bg-white hover:border-gray-300' : 'cursor-pointer'
-        } ${className}`}
+        className={`border ${isOpen ? 'border-lime-500 ring-1 ring-lime-500' : 'border-neutral-200 hover:border-lime-500'} transition-all duration-200 rounded-xl ${size === 'sm' ? 'p-2 md:p-3' : size === 'lg' ? 'p-5' : 'p-3 md:p-4'
+          } bg-white shadow-sm dark:bg-neutral-800 dark:border-neutral-700 ${disabled ? 'cursor-not-allowed opacity-60 bg-neutral-100 dark:bg-neutral-900' : 'cursor-pointer'
+          } ${className}`}
         ref={triggerRef}
         onClick={() => {
           if (disabled) {
@@ -171,15 +169,14 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
         }}
       >
         <div className="flex items-center justify-between">
-          <span className={`${
-            size === 'sm' ? 'text-xs md:text-sm' : size === 'lg' ? 'text-base' : 'text-sm'
-          } font-medium ${!value ? 'text-gray-500' : 'text-gray-900'}`}>
+          <span className={`${size === 'sm' ? 'text-xs md:text-sm' : size === 'lg' ? 'text-base' : 'text-sm'
+            } font-medium ${!value ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-900 dark:text-white'}`}>
             {value || placeholder || "Select an option"}
           </span>
           <span
             className={`transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           >
-            <svg className={`${size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} text-gray-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`${size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} text-neutral-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </span>
@@ -202,36 +199,35 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="rounded-xl border border-gray-200 bg-white shadow-2xl">
-                <div className="border-b border-gray-200 px-4 py-3">
+              <div className="rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-800 overflow-hidden">
+                <div className="border-b border-neutral-100 dark:border-neutral-700 px-3 py-2">
                   <input
                     type="text"
                     ref={inputRef}
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search material types..."
-                    className="w-full rounded-lg border border-transparent bg-gray-50 px-3 py-2 text-sm text-gray-700 focus:border-[#90c639]/60 focus:bg-white focus:outline-none focus:text-[#1a3a1a] placeholder-gray-400"
+                    placeholder="Search..."
+                    className="w-full rounded-lg border border-transparent bg-neutral-50 px-3 py-2 text-sm text-neutral-900 focus:border-lime-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-lime-500 placeholder-neutral-400 dark:bg-neutral-900 dark:text-white dark:focus:bg-neutral-900"
                   />
                 </div>
                 <div
-                  className="custom-scrollbar overflow-y-auto px-2 py-2"
+                  className="custom-scrollbar overflow-y-auto p-1"
                   style={{ maxHeight: dropdownPosition.maxHeight }}
                 >
                   {filteredOptions.length > 0 ? (
                     filteredOptions.map((option) => (
                       <div
                         key={option}
-                        className={`mb-1 rounded-xl border border-transparent px-4 py-3 text-sm font-medium transition hover:border-[#90c639]/40 hover:bg-gradient-to-r hover:from-amber-50 hover:to-green-50 hover:text-[#1a3a1a] ${
-                          option === value
-                            ? 'border-[#90c639] bg-gradient-to-r from-amber-100 to-green-100 text-[#1a3a1a]'
-                            : 'bg-white text-gray-800'
-                        }`}
+                        className={`mb-0.5 rounded-lg border border-transparent px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer ${option === value
+                            ? 'bg-lime-50 text-lime-900 dark:bg-lime-900/20 dark:text-lime-100'
+                            : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-700/50'
+                          }`}
                         onClick={() => handleSelect(option)}
                       >
                         <div className="flex items-center justify-between">
                           <span>{option}</span>
                           {option === value && (
-                            <svg className="h-4 w-4 text-[#90c639]" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="h-4 w-4 text-lime-600 dark:text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                               <path
                                 fillRule="evenodd"
                                 d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"

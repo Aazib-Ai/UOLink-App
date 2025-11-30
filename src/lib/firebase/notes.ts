@@ -219,18 +219,30 @@ export const getNotesForProfile = async ({
         }
         constraints.push(limit(pageSize));
 
-        const profileQuery = query(notesCollection, ...constraints);
-
-        const querySnapshot = await getDocs(profileQuery);
-        const notes = querySnapshot.docs.map(mapNoteSnapshot);
-        const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
-        const hasMore = querySnapshot.docs.length === pageSize;
-
-        return {
-            notes,
-            lastDocSnapshot: lastDoc,
-            hasMore
-        };
+        let querySnapshot: any
+        try {
+            const profileQuery = query(notesCollection, ...constraints)
+            querySnapshot = await getDocs(profileQuery)
+            const notes = querySnapshot.docs.map(mapNoteSnapshot)
+            const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null
+            const hasMore = querySnapshot.docs.length === pageSize
+            return { notes, lastDocSnapshot: lastDoc, hasMore }
+        } catch (err: any) {
+            console.warn('getNotesForProfile: composite index missing or query failed, using fallback.', err?.message || err)
+            const fallbackConstraints: any[] = []
+            if (uploadedBy) fallbackConstraints.push(where('uploadedBy', '==', uploadedBy))
+            if (contributorName) {
+                const normalizedContributor = normalizeForStorage(contributorName)
+                fallbackConstraints.push(where('contributorName', '==', normalizedContributor))
+            }
+            fallbackConstraints.push(limit(Math.max(pageSize, 25)))
+            const fallbackQuery = query(notesCollection, ...fallbackConstraints)
+            const fallbackSnap = await getDocs(fallbackQuery)
+            let notes = fallbackSnap.docs.map(mapNoteSnapshot)
+            notes.sort((a, b) => toMillis(b.uploadedAt) - toMillis(a.uploadedAt))
+            notes = notes.slice(0, pageSize)
+            return { notes, lastDocSnapshot: null, hasMore: false }
+        }
     } catch (error) {
         console.error('Error fetching profile notes:', error);
         throw error;

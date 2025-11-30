@@ -57,4 +57,43 @@ export const updateSavedNotesIndex = async (userId: string, noteId: string, shou
   )
 }
 
-
+interface VotesIndexDoc {
+  up?: string[]
+  down?: string[]
+  updatedAt?: any
+}
+
+const getVotesIndexRef = (userId: string) => doc(db, 'users', userId, 'votesIndex', 'index')
+
+export const readVotesIndex = async (userId: string): Promise<{ up: string[]; down: string[] } | null> => {
+  const ref = getVotesIndexRef(userId)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) return null
+  const data = snap.data() as VotesIndexDoc
+  const up = Array.isArray(data?.up) ? data.up : []
+  const down = Array.isArray(data?.down) ? data.down : []
+  return { up, down }
+}
+
+export const buildVotesIndexFromSubcollection = async (userId: string): Promise<{ up: string[]; down: string[] }> => {
+  const votesRef = collection(db, 'users', userId, 'votes')
+  const votesSnap = await getDocs(votesRef)
+  const up: string[] = []
+  const down: string[] = []
+  votesSnap.docs.forEach((d) => {
+    const v = (d.data() as any)?.voteType
+    if (v === 'up') up.push(d.id)
+    else if (v === 'down') down.push(d.id)
+  })
+  const ref = getVotesIndexRef(userId)
+  await setDoc(ref, { up, down, updatedAt: serverTimestamp() }, { merge: true })
+  return { up, down }
+}
+
+export const fetchVotesIndexEfficient = async (userId: string): Promise<{ up: string[]; down: string[] }> => {
+  const idx = await readVotesIndex(userId)
+  if (idx) return idx
+  return await buildVotesIndexFromSubcollection(userId)
+}
+
+

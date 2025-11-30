@@ -11,7 +11,13 @@ export async function uploadProfilePicture(file: File): Promise<ApiResponse<{ fi
         body: formData,
     })
     const json = await res.json()
-    return json
+    if (json && typeof json === 'object' && 'data' in json) {
+        return json as ApiResponse<{ fileUrl: string; storageKey: string }>
+    }
+    if (json && typeof json === 'object' && 'error' in json) {
+        return json as ApiResponse<{ fileUrl: string; storageKey: string }>
+    }
+    return { data: json as { fileUrl: string; storageKey: string } }
 }
 
 export async function deleteProfilePicture(storageKey: string): Promise<ApiResponse<{ success: boolean }>> {
@@ -21,6 +27,12 @@ export async function deleteProfilePicture(storageKey: string): Promise<ApiRespo
         headers: { Authorization: `Bearer ${token}` },
     })
     const json = await res.json()
-    return json
+    if (json && typeof json === 'object' && 'data' in json) {
+        return json as ApiResponse<{ success: boolean }>
+    }
+    if (json && typeof json === 'object' && 'error' in json) {
+        return json as ApiResponse<{ success: boolean }>
+    }
+    return { data: json as { success: boolean } }
 }
 

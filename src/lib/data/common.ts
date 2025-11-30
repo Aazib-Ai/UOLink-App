@@ -1,7 +1,9 @@
 export function toTitleCase(str: string) {
-  return str.replace(/\w\S*/g, function (txt) {
-    return txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase();
-  });
+  // Split by spaces only to preserve special characters like &
+  return str.split(' ').map(word => {
+    if (!word) return word;
+    return word.charAt(0).toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
 }
 
 export function normalizeForStorage(str: string) {
@@ -19,12 +21,12 @@ export function slugify(str: string) {
 }
 
 export const toNumber = (value: unknown): number =>
-    typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
 export const clampNonNegative = (value: number): number => (value < 0 ? 0 : value);
 
 export const readString = (value: unknown): string | undefined =>
-    typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 
 export const readNumber = (value: unknown): number | undefined =>
-    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;

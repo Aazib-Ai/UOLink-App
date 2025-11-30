@@ -13,7 +13,7 @@ import {
 import { db } from './app';
 import { toNumber } from '../data/common';
 import { UserProfile } from '../data/types';
-import { getUserByUsername } from './username-service';
+import { getUserByUsernameOnly } from './profile-resolver';
 import { usernameCache } from '../cache/username-cache';
 import { syncUserProfileReferences } from './profile-sync';
 
@@ -74,7 +74,7 @@ export const getUserProfileByName = async (identifier: string): Promise<UserProf
         }
 
         // Use clean username-only lookup (new system)
-        return await getUserByUsername(normalizedInput);
+        return await getUserByUsernameOnly(normalizedInput);
     } catch (error) {
         console.error("Error fetching user profile by name:", error);
         return null;
@@ -117,7 +117,7 @@ export const updateProfileUsername = async (userId: string, username: string): P
  * Get user profile by username (direct lookup)
  */
 export const getUserProfileByUsername = async (username: string): Promise<UserProfile | null> => {
-    return await getUserByUsername(username);
+    return await getUserByUsernameOnly(username);
 };
 
 /**

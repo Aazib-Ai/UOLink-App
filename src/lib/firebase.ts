@@ -43,7 +43,6 @@ export * as commentsService from './firebase/comments';
 export * as reportsService from './firebase/reports';
 export * as auraService from './firebase/aura';
 export * as searchService from './firebase/search';
-export * as usernameService from './firebase/username-service';
 export * as profileResolver from './firebase/profile-resolver';
 export * as passwordService from './firebase/password-service';
 
@@ -64,16 +63,8 @@ import {
     getUserProfile,
     getUserProfileByUsername,
     getUserProfileByFullName,
-    updateProfileUsername,
 } from './firebase/profiles';
 
-import {
-    checkAvailability,
-    reserveUsername,
-    getUserByUsername,
-    generateSuggestions,
-    changeUsername,
-} from './firebase/username-service';
 
 import {
     getUserByUsernameOnly,
@@ -120,12 +111,6 @@ export {
     getUserProfile,
     getUserProfileByUsername,
     getUserProfileByFullName,
-    updateProfileUsername,
-    checkAvailability,
-    reserveUsername,
-    getUserByUsername,
-    generateSuggestions,
-    changeUsername,
     getUserByUsernameOnly,
     getUserByIdOnly,
     isValidUsernameFormat,

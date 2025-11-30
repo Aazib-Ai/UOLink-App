@@ -1,4 +1,20 @@
 const CACHE_NAME = 'uolink-v1';
+// Silence console logs in production environments
+// Only log when running on localhost to avoid noisy outputs for end users
+try {
+  const SW_DEV = (self && self.location && (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'))
+  if (!SW_DEV) {
+    const noop = () => {}
+    // Override common console methods in the service worker scope
+    if (typeof console !== 'undefined') {
+      console.log = noop
+      console.warn = noop
+      console.error = noop
+      console.info = noop
+      console.debug = noop
+    }
+  }
+} catch {}
 const STATIC_CACHE_NAME = 'uolink-static-v1';
 const DYNAMIC_CACHE_NAME = 'uolink-dynamic-v1';
 

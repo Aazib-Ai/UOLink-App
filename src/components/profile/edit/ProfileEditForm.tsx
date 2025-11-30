@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { CheckCircle, Save, User, Sparkles, ArrowRight } from 'lucide-react'
+import { CheckCircle, Save, User, Sparkles } from 'lucide-react'
 import { useProfileEditForm } from '@/hooks/useProfileEditForm'
 import CustomSelect from '../../CustomSelect'
 import ContributionHub from '../../ContributionHub'
@@ -14,7 +14,7 @@ import AuraDashboard from './AuraDashboard'
 import UploadModalLazy from '../../UploadModalLazy'
 import { slugify } from '@/lib/utils'
 import { MAJOR_NAMES } from '@/constants/universityData'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const SEMESTER_OPTIONS = [
   'Semester 1',
@@ -50,6 +50,22 @@ export default function ProfileEditForm() {
     addSkill,
     removeSkill,
   } = useProfileEditForm()
+
+  const formRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isSaveShortcut = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'
+      if (isSaveShortcut) {
+        e.preventDefault()
+        if (!isSubmitting && hasChanges) {
+          formRef.current?.requestSubmit()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSubmitting, hasChanges])
 
   const handleUploadClick = () => {
     setIsUploadModalOpen(true)
@@ -120,7 +136,7 @@ export default function ProfileEditForm() {
           <ProgressMeter completionScore={completionScore} isProfileComplete={isProfileComplete} />
           <SuccessBanner success={success} error={error} />
         </div>
-        <form onSubmit={handleSubmit} className="relative z-10 border-t border-lime-200/60 bg-white/95 px-6 py-8 sm:px-10 sm:py-12">
+        <form ref={formRef} onSubmit={handleSubmit} className="relative z-10 border-t border-lime-200/60 bg-white/95 px-6 py-8 sm:px-10 sm:py-12">
           <div className="space-y-8">
             <section className="rounded-2xl border border-lime-100 bg-white/90 p-5 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
@@ -287,6 +303,46 @@ export default function ProfileEditForm() {
           </div>
         </form>
       </section>
+
+      {hasChanges && (
+        <div className="fixed bottom-4 left-0 right-0 z-50">
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between rounded-full border border-lime-200/70 bg-white/90 p-2 shadow-xl backdrop-blur">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#426014]">
+                <Sparkles className="h-4 w-4 text-[#90c639]" />
+                <span>Unsaved changes</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push('/userpage')}
+                  className="inline-flex items-center justify-center rounded-full border border-lime-200 px-4 py-2 text-xs font-semibold text-[#426014] transition hover:border-[#90c639] hover:text-[#2d460b]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => formRef.current?.requestSubmit()}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#90c639] to-[#7ab332] px-5 py-2 text-xs font-semibold text-white shadow-[0_14px_30px_-18px_rgba(37,72,8,0.7)] transition hover:shadow-[0_18px_36px_-16px_rgba(37,72,8,0.8)] disabled:cursor-not-allowed disabled:from-[#b5d783] disabled:to-[#b5d783]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                      Saving
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3 w-3" />
+                      Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       <UploadModalLazy

@@ -10,9 +10,9 @@ import {
   resolveUploadDescriptorByMime,
   getSupportedFileTypeSummary,
 } from '@/constants/uploadFileTypes'
-import { validateFileUpload, parseAndValidateUploadFormData } from '@/lib/security/validation'
+import { validateFileUpload, parseAndValidateUploadFormData, detectUploadDescriptorFromBuffer } from '@/lib/security/validation'
 import { apiErrorByKey, apiError } from '@/lib/api/errors'
-import { enforceRateLimitOr429, rateLimitKeyByIp, RATE_LIMITS } from '@/lib/security/rateLimit'
+import { enforceRateLimitOr429, rateLimitKeyByIp, rateLimitKeyByUser, RATE_LIMITS } from '@/lib/security/rateLimit'
 import { logAuditEvent, logSecurityEvent, startRouteSpan, endRouteSpan, getRequestContext } from '@/lib/security/logging'
 import { enforceNoteSchemaOnWrite } from '@/lib/data/note-schema'
 import { buildOptimizedObjectKey, getObjectKeyDepth } from '@/lib/r2-shared'
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
   try {
     const span = startRouteSpan('upload.post', request)
     // Rate limit per IP for uploads: 5/min
-    const rl = await enforceRateLimitOr429(request, 'upload', rateLimitKeyByIp(request, 'upload'))
-    if (!rl.allowed) return rl.response
+    const rlIp = await enforceRateLimitOr429(request, 'upload', rateLimitKeyByIp(request, 'upload'))
+    if (!rlIp.allowed) return rlIp.response
 
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Bearer ')) {
@@ -53,6 +53,11 @@ export async function POST(request: NextRequest) {
     const token = authorization.replace('Bearer ', '')
     const adminAuth = getAdminAuth()
     const decoded = await adminAuth.verifyIdToken(token)
+    if (!decoded.email_verified) {
+      return apiErrorByKey(403, 'FORBIDDEN', 'Verify your email before uploading materials.')
+    }
+    const rlUser = await enforceRateLimitOr429(request, 'upload', rateLimitKeyByUser(decoded.uid, 'upload'), decoded.email || undefined)
+    if (!rlUser.allowed) return rlUser.response
 
     if (!decoded.email || !allowedEmailPattern.test(decoded.email)) {
       return apiErrorByKey(403, 'FORBIDDEN', 'Only university accounts can upload materials.')
@@ -98,8 +103,8 @@ export async function POST(request: NextRequest) {
       return apiErrorByKey(400, 'VALIDATION_ERROR', msg)
     }
     const originalFileName = (file.name || '').trim()
-    const resolvedExtension = fileValidation.sanitizedData!.extension
-    const normalizedContentType = fileValidation.sanitizedData!.contentType
+    let resolvedExtension = fileValidation.sanitizedData!.extension
+    let normalizedContentType = fileValidation.sanitizedData!.contentType
 
     const metaValidation = parseAndValidateUploadFormData(formData)
     if (!metaValidation.isValid) {
@@ -109,6 +114,28 @@ export async function POST(request: NextRequest) {
     const { meta } = metaValidation.sanitizedData!
 
     const fileBuffer = Buffer.from(await file.arrayBuffer())
+    const detected = await detectUploadDescriptorFromBuffer(originalFileName, fileBuffer)
+    if (!detected) {
+      return apiErrorByKey(400, 'VALIDATION_ERROR', 'Unsupported or invalid file content')
+    }
+    const clientExt = resolvedExtension
+    const clientType = normalizedContentType
+    const serverExt = detected.extension
+    const serverType = detected.contentType
+    if (clientExt !== serverExt || clientType.toLowerCase() !== serverType.toLowerCase()) {
+      const { ipAddress, userAgent } = getRequestContext(request)
+      await logSecurityEvent({
+        type: 'SUSPICIOUS_ACTIVITY',
+        endpoint: span.endpoint,
+        correlationId: span.correlationId,
+        userId: decoded.uid,
+        ipAddress,
+        userAgent,
+        details: { reason: 'mismatch_client_vs_server_file_type', clientExt, clientType, serverExt, serverType }
+      })
+    }
+    resolvedExtension = serverExt
+    normalizedContentType = serverType
     const r2Client = getR2Client()
     const bucket = getR2BucketName()
     const db = getAdminDb()
@@ -246,7 +273,10 @@ export async function POST(request: NextRequest) {
 
     // Denormalize: increment contributor's notesCount on profile
     try {
-      await profileRef.set({ notesCount: FieldValue.increment(1) }, { merge: true })
+      await profileRef.set({
+        notesCount: FieldValue.increment(1),
+        aura: FieldValue.increment(10)
+      }, { merge: true })
     } catch (incErr) {
       if (VERBOSE_LOGS) {
         console.warn('[api/upload] Failed to increment notesCount for profile', incErr)
@@ -254,10 +284,22 @@ export async function POST(request: NextRequest) {
     }
 
     await endRouteSpan(span, 201)
-    // Apply rate limit headers
-    resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
-    resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
-    resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
+    const limitMax = String(RATE_LIMITS.upload.max)
+    const remainingCombined = String(
+      Math.min(
+        parseInt(rlIp.headers['X-RateLimit-Remaining'] || '0', 10),
+        parseInt(rlUser.headers['X-RateLimit-Remaining'] || '0', 10)
+      )
+    )
+    const resetCombined = String(
+      Math.max(
+        parseInt(rlIp.headers['X-RateLimit-Reset'] || '0', 10),
+        parseInt(rlUser.headers['X-RateLimit-Reset'] || '0', 10)
+      )
+    )
+    resp.headers.set('X-RateLimit-Limit', limitMax)
+    resp.headers.set('X-RateLimit-Remaining', remainingCombined)
+    resp.headers.set('X-RateLimit-Reset', resetCombined)
     return resp
   } catch (error) {
     console.error('[api/upload] Error occurred', error)

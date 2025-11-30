@@ -10,11 +10,8 @@ import {
   useState,
   ReactNode,
 } from 'react'
-import {
-  getInitialNotes,
-  getFilterOptions,
-  getNotesWithPagination,
-} from '@/lib/firebase'
+import { getFilterOptions, searchNotes } from '@/lib/firebase'
+import { optimizedDataService } from '@/lib/firebase/optimized-data-service'
 import { auth } from '@/lib/firebase'
 import { SortMode } from '@/components/dashboard/constants'
 import { computeTrendingScore, getTimestampAsDate } from '@/components/dashboard/constants'
@@ -137,30 +134,21 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
           materialType: materialTypeFilter,
           materialSequence: materialSequenceFilter,
         }
-        // Fetch first page using server-side pagination and apply search term client-side
-        const result = await getNotesWithPagination(9, null, filters)
-
-        const filteredBySearch = titleFilter.trim()
-          ? result.notes.filter((note: any) => {
-              const q = titleFilter.toLowerCase()
-              return (
-                (note.subject?.toLowerCase() || '').includes(q) ||
-                (note.teacher?.toLowerCase() || '').includes(q) ||
-                (note.contributorName?.toLowerCase() || '').includes(q) ||
-                (note.materialType?.toLowerCase() || '').includes(q) ||
-                (note.section?.toLowerCase() || '').includes(q) ||
-                (note.name?.toLowerCase() || '').includes(q)
-              )
-            })
-          : result.notes
-
-        setNotes(filteredBySearch)
-        setLastDocSnapshot(result.lastDocSnapshot)
-        setHasMore(result.hasMore)
+        if (titleFilter.trim()) {
+          const result = await searchNotes(titleFilter, 20, null)
+          setNotes(result.notes)
+          setLastDocSnapshot(result.lastDocSnapshot)
+          setHasMore(result.hasMore)
+        } else {
+          const result = await optimizedDataService.fetchNotes({ pageSize: 9, filters })
+          setNotes(result.data)
+          setLastDocSnapshot(result.lastDoc)
+          setHasMore(result.hasMore)
+        }
       } else {
-        const result = await getInitialNotes()
-        setNotes(result.notes)
-        setLastDocSnapshot(result.lastDocSnapshot)
+        const result = await optimizedDataService.fetchNotes({ pageSize: 9 })
+        setNotes(result.data)
+        setLastDocSnapshot(result.lastDoc)
         setHasMore(result.hasMore)
       }
     } catch (err: any) {
@@ -201,26 +189,17 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
             materialSequence: materialSequenceFilter,
           }
         : {}
-
-      const result = await getNotesWithPagination(10, lastDocSnapshot, filters)
-
-      const nextNotes = titleFilter.trim()
-        ? result.notes.filter((note: any) => {
-            const q = titleFilter.toLowerCase()
-            return (
-              (note.subject?.toLowerCase() || '').includes(q) ||
-              (note.teacher?.toLowerCase() || '').includes(q) ||
-              (note.contributorName?.toLowerCase() || '').includes(q) ||
-              (note.materialType?.toLowerCase() || '').includes(q) ||
-              (note.section?.toLowerCase() || '').includes(q) ||
-              (note.name?.toLowerCase() || '').includes(q)
-            )
-          })
-        : result.notes
-
-      setNotes((prevNotes) => [...prevNotes, ...nextNotes])
-      setLastDocSnapshot(result.lastDocSnapshot)
-      setHasMore(result.hasMore)
+      if (titleFilter.trim()) {
+        const result = await searchNotes(titleFilter, 20, lastDocSnapshot)
+        setNotes((prevNotes) => [...prevNotes, ...result.notes])
+        setLastDocSnapshot(result.lastDocSnapshot)
+        setHasMore(result.hasMore)
+      } else {
+        const result = await optimizedDataService.fetchNotes({ pageSize: 10, filters, startAfterDoc: lastDocSnapshot })
+        setNotes((prevNotes) => [...prevNotes, ...result.data])
+        setLastDocSnapshot(result.lastDoc)
+        setHasMore(result.hasMore)
+      }
     } catch (err: any) {
       console.error('Error loading more notes:', err)
       setError(err.message)
@@ -243,9 +222,9 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
 
     try {
       setLoading(true)
-      const result = await getInitialNotes()
-      setNotes(result.notes)
-      setLastDocSnapshot(result.lastDocSnapshot)
+      const result = await optimizedDataService.fetchNotes({ pageSize: 9 })
+      setNotes(result.data)
+      setLastDocSnapshot(result.lastDoc)
       setHasMore(result.hasMore)
     } catch (err: any) {
       console.error('Error resetting filters:', err)
@@ -267,13 +246,13 @@ export function DashboardStateProvider({ children }: DashboardStateProviderProps
         setLoading(true)
         setError(null)
 
-        const initialNotesResult = await getInitialNotes()
+        const initialNotesResult = await optimizedDataService.fetchNotes({ pageSize: 9 })
         if (!isMounted) {
           return
         }
 
-        setNotes(initialNotesResult.notes)
-        setLastDocSnapshot(initialNotesResult.lastDocSnapshot)
+        setNotes(initialNotesResult.data)
+        setLastDocSnapshot(initialNotesResult.lastDoc)
         setHasMore(initialNotesResult.hasMore)
 
         const filterOptionsResult = await getFilterOptions()

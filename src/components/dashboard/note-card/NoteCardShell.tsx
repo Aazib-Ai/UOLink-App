@@ -122,6 +122,7 @@ export const NoteCardShell: React.FC<NoteCardShellProps> = ({
               filters={filters}
               noteName={note.name}
               variant="mobile"
+              onViewNote={safeHandlers.handleViewNote}
             />
             <MetadataChips
               note={note}
@@ -173,14 +174,15 @@ export const NoteCardShell: React.FC<NoteCardShellProps> = ({
             {/* Content Section */}
             <div className={styles.layout.direction === 'row' ? 'flex-1' : ''}>
               {/* Header */}
-              <div className={styles.layout.direction === 'column' ? 'mb-3' : ''}>
-                <Header
-                  note={note}
-                  filters={filters}
-                  noteName={note.name}
-                  variant={variant}
-                />
-              </div>
+          <div className={styles.layout.direction === 'column' ? 'mb-3' : ''}>
+            <Header
+              note={note}
+              filters={filters}
+              noteName={note.name}
+              variant={variant}
+              onViewNote={safeHandlers.handleViewNote}
+            />
+          </div>
 
               {/* Badges */}
               <div className={styles.layout.direction === 'column' ? 'mb-4' : ''}>

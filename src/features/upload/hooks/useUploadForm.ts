@@ -457,6 +457,16 @@ export function useUploadForm(enableDraftPersistence = false) {
             })
             return
         }
+        if (requiresSequence) {
+            const seq = (formData.materialSequence || '').trim()
+            if (!SEQUENCE_OPTIONS.includes(seq as any)) {
+                setStatus({
+                    type: 'error',
+                    message: 'Select a valid assignment or quiz number (1-4).',
+                })
+                return
+            }
+        }
 
         try {
             setSubmitting(true)
@@ -466,18 +476,43 @@ export function useUploadForm(enableDraftPersistence = false) {
             console.log(`[useUploadForm] Starting upload of ${fileSizeMB}MB file`)
 
             const token = await user.getIdToken()
+            const normalizedSemester = (() => {
+                const raw = (profileData.semester || '').trim()
+                const m = raw.match(/(\d+)/)
+                const n = m ? m[1] : ''
+                return ['1','2','3','4','5','6','7','8'].includes(n) ? n : ''
+            })()
+            const normalizedSection = (() => {
+                const raw = (profileData.section || '').trim().toUpperCase()
+                return ['A','B','C'].includes(raw) ? raw : ''
+            })()
+
+            if (!normalizedSemester || !normalizedSection) {
+                setStatus({
+                    type: 'error',
+                    message: 'Please update your profile with a valid semester and section.',
+                    details: 'Semester must be 1-8 and section must be A, B, or C.',
+                    action: { label: 'Complete Profile', href: '/complete-profile' }
+                })
+                setSubmitting(false)
+                return
+            }
+
             const formDataToSubmit = new FormData()
             formDataToSubmit.append('file', formData.file)
             formDataToSubmit.append('name', formData.title.trim())
             formDataToSubmit.append('subject', canonicalSubject)
             formDataToSubmit.append('teacher', teacherToSubmit)
-            formDataToSubmit.append('semester', profileData.semester.trim())
-            formDataToSubmit.append('section', profileData.section.trim())
+            formDataToSubmit.append('semester', normalizedSemester)
+            formDataToSubmit.append('section', normalizedSection)
             formDataToSubmit.append('materialType', formData.materialType.trim())
             formDataToSubmit.append('contributorName', profileData.fullName.trim())
             formDataToSubmit.append('contributorMajor', profileData.major.trim())
-            if (formData.materialSequence.trim()) {
-                formDataToSubmit.append('materialSequence', formData.materialSequence.trim())
+            if (requiresSequence) {
+                const seq = (formData.materialSequence || '').trim()
+                if (seq && SEQUENCE_OPTIONS.includes(seq as any)) {
+                    formDataToSubmit.append('materialSequence', seq)
+                }
             }
 
             console.log(`[useUploadForm] Sending request to /api/upload`)
@@ -506,7 +541,7 @@ export function useUploadForm(enableDraftPersistence = false) {
                     throw new Error('Server timeout. Please try again with a smaller file.')
                 }
 
-                throw new Error(payload.error || payload.details || 'Upload failed. Please try again.')
+                throw new Error(payload.details || payload.error || 'Upload failed. Please try again.')
             }
 
             setStatus({

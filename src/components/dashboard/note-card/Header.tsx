@@ -8,6 +8,7 @@ interface HeaderProps {
   filters: FilterState
   noteName: string
   variant: Variant
+  onViewNote?: (note: Note) => void
 }
 
 const renderCredibilityIcon = (iconType: 'flame' | 'skull' | null) => {
@@ -24,7 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   note,
   filters,
   noteName,
-  variant
+  variant,
+  onViewNote
 }) => {
   const credibilityData = getCredibilityData(note)
 
@@ -55,7 +57,13 @@ export const Header: React.FC<HeaderProps> = ({
     <div className={variant === 'desktop' ? '' : 'mb-3'}>
       <div className={`flex items-start justify-between ${variant === 'desktop' ? 'gap-2' : 'mb-2'}`}>
         <h1
-          onClick={handleSubjectClick}
+          onClick={() => {
+            if (onViewNote) {
+              onViewNote(note)
+            } else {
+              handleSubjectClick()
+            }
+          }}
           className={`cursor-pointer transition-colors duration-300 hover:text-[#90c639] pr-2 ${titleClass}`}
         >
           {toTitleCase(note.subject) || "unknown"}

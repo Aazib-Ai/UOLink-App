@@ -73,6 +73,7 @@ export default function ContributionList({
   hasFilteredNotes,
   onEmptyStateAction
 }: ContributionListProps) {
+  const [pendingDelete, setPendingDelete] = useState<UserNote | null>(null)
   const formatFileSize = (bytes?: number) => {
     if (!bytes || Number.isNaN(bytes)) return 'Size unknown'
     if (bytes < 1024) return `${bytes} B`
@@ -126,6 +127,7 @@ export default function ContributionList({
   }
 
   return (
+    <>
     <section className="mt-8 space-y-5">
       {notes.map((note) => {
         const isEditing = editingId === note.id
@@ -328,7 +330,7 @@ export default function ContributionList({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDelete(note.id)}
+                    onClick={() => setPendingDelete(note)}
                     disabled={isDeleting}
                     className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -342,5 +344,41 @@ export default function ContributionList({
         )
       })}
     </section>
+
+    {pendingDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
+        <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-lg">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Delete this note?</h3>
+            <p className="mt-2 text-sm text-gray-600">This will remove the note from the shared library. This action cannot be undone.</p>
+          </div>
+          <div className="mb-4 rounded-xl bg-[#fff7f7] p-4 text-sm text-rose-700">
+            <div className="font-semibold">{pendingDelete.name}</div>
+            <div className="mt-1 text-gray-700">{pendingDelete.subject} {pendingDelete.teacher ? `• ${pendingDelete.teacher}` : ''}</div>
+          </div>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="inline-flex items-center justify-center rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const id = pendingDelete.id
+                setPendingDelete(null)
+                onDelete(id)
+              }}
+              className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

@@ -10,11 +10,11 @@ import { enforceRateLimitOr429, rateLimitKeyByUser, enforceCooldownOr429 } from 
 interface VoteBody { type?: 'up' | 'down' }
 
 export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+    request: NextRequest,
+    context: { params: Promise<{ id: string }> }
 ) {
     return withAuth(request, async ({ user }) => {
-    const { id: noteId } = await context.params
+        const { id: noteId } = await context.params
         if (!noteId) {
             return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing note id')
         }
@@ -121,6 +121,27 @@ export async function POST(
                     tx.set(
                         profileRef,
                         { aura: FieldValue.increment(auraDelta), auraUpdatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
+                }
+
+                const votesIndexRef = db.collection('users').doc(user.uid).collection('votesIndex').doc('index')
+                if (nextVote === 'up') {
+                    tx.set(
+                        votesIndexRef,
+                        { up: FieldValue.arrayUnion(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
+                } else if (nextVote === 'down') {
+                    tx.set(
+                        votesIndexRef,
+                        { down: FieldValue.arrayUnion(noteId), up: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
+                } else {
+                    tx.set(
+                        votesIndexRef,
+                        { up: FieldValue.arrayRemove(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
                         { merge: true }
                     )
                 }

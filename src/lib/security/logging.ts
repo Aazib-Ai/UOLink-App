@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebaseAdmin'
+import { randomUUID as nodeRandomUUID } from 'crypto'
 import { getSecurityLogger } from './logging-service'
 import type { SecurityEventType, Severity, SecurityEvent } from './logging-config'
 
@@ -34,10 +35,8 @@ const LOG_TO_CONSOLE =
 export function generateCorrelationId(): string {
   try {
     // Prefer crypto UUID where available
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { randomUUID } = require('crypto')
-    if (typeof randomUUID === 'function') {
-      return randomUUID()
+    if (typeof nodeRandomUUID === 'function') {
+      return nodeRandomUUID()
     }
   } catch {}
   const ts = Date.now().toString(36)

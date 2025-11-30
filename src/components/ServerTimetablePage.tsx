@@ -7,8 +7,8 @@ export default function ServerTimetablePage() {
   return (
     <>
       <ServerNavbar />
-      <main className="min-h-screen bg-[#f6f9ee]">
-        <div className="mx-auto w-full max-w-4xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <main className="min-h-screen pt-24 sm:pt-28 md:pt-32">
+        <div className="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pb-12">
 
           {/* Client-side interactive timetable */}
           <SuspenseWrapper fallback={<div className="mt-6 h-24 rounded-2xl bg-white animate-pulse" aria-hidden="true" />}>

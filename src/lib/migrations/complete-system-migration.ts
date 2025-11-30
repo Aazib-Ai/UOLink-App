@@ -12,13 +12,11 @@ import {
     QueryDocumentSnapshot,
     DocumentData
 } from 'firebase/firestore';
-import { db } from '../firebase/app';
-import { UsernameMigrationService, MigrationProgress } from './username-migration';
-import type { UserProfile } from '../data/types';
+import { db } from '../firebase/app'
+import type { UserProfile } from '../data/types'
 
 export interface SystemMigrationProgress {
-    phase: 'username_generation' | 'legacy_cleanup' | 'validation' | 'complete';
-    usernameMigration?: MigrationProgress;
+    phase: 'legacy_cleanup' | 'validation' | 'complete';
     legacyCleanup?: {
         totalProfiles: number;
         processedProfiles: number;
@@ -54,11 +52,11 @@ export class CompleteSystemMigrationService {
 
     constructor() {
         this.progress = {
-            phase: 'username_generation',
+            phase: 'legacy_cleanup',
             startTime: new Date(),
             isComplete: false,
             errors: []
-        };
+        }
     }
 
     /**
@@ -76,49 +74,25 @@ export class CompleteSystemMigrationService {
             console.log(`Starting complete system migration (${dryRun ? 'DRY RUN' : 'LIVE'})`);
 
             this.progress = {
-                phase: 'username_generation',
+                phase: 'legacy_cleanup',
                 startTime: new Date(),
                 isComplete: false,
                 errors: []
-            };
-
-            // Phase 1: Username Generation
-            console.log('Phase 1: Generating usernames for all users...');
-            this.progress.phase = 'username_generation';
-            if (onProgress) onProgress({ ...this.progress });
-
-            const usernameMigrationService = new UsernameMigrationService();
-            const usernameMigrationResult = await usernameMigrationService.executeMigration({
-                batchSize,
-                dryRun,
-                skipExisting: true,
-                onProgress: (usernameProgress) => {
-                    this.progress.usernameMigration = usernameProgress;
-                    if (onProgress) onProgress({ ...this.progress });
-                }
-            });
-
-            this.progress.usernameMigration = usernameMigrationResult;
-
-            if (usernameMigrationResult.failedMigrations > 0) {
-                this.progress.errors.push(
-                    `Username migration completed with ${usernameMigrationResult.failedMigrations} failures`
-                );
             }
 
-            // Phase 2: Legacy Field Cleanup
+            // Phase 1: Legacy Field Cleanup
             if (cleanupLegacyFields && !dryRun) {
                 console.log('Phase 2: Cleaning up legacy fields...');
-                this.progress.phase = 'legacy_cleanup';
+                this.progress.phase = 'legacy_cleanup'
                 if (onProgress) onProgress({ ...this.progress });
 
                 const cleanupResult = await this.cleanupLegacyFields(batchSize, dryRun);
                 this.progress.legacyCleanup = cleanupResult;
             }
 
-            // Phase 3: Validation
+            // Phase 2: Validation
             console.log('Phase 3: Validating migration results...');
-            this.progress.phase = 'validation';
+            this.progress.phase = 'validation'
             if (onProgress) onProgress({ ...this.progress });
 
             const validationResult = await this.validateSystemMigration();
@@ -252,12 +226,10 @@ export class CompleteSystemMigrationService {
         try {
             console.log('Validating system migration...');
 
-            const profilesCollection = collection(db, 'profiles');
-            const usernamesCollection = collection(db, 'usernames');
+            const profilesCollection = collection(db, 'profiles')
 
             // Get all profiles
-            const profilesSnapshot = await getDocs(profilesCollection);
-            const usernamesSnapshot = await getDocs(usernamesCollection);
+            const profilesSnapshot = await getDocs(profilesCollection)
 
             const result = {
                 totalProfiles: profilesSnapshot.size,
@@ -266,8 +238,7 @@ export class CompleteSystemMigrationService {
                 inconsistencies: [] as string[]
             };
 
-            const profileUsernames = new Set<string>();
-            const usernameRecords = new Map<string, any>();
+            const profileUsernames = new Set<string>()
 
             // Analyze profiles
             profilesSnapshot.docs.forEach(doc => {
@@ -284,38 +255,7 @@ export class CompleteSystemMigrationService {
                 }
             });
 
-            // Analyze username records
-            usernamesSnapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.isActive) {
-                    usernameRecords.set(data.id.toLowerCase(), data);
-                }
-            });
-
-            // Check for inconsistencies
-            if (result.profilesWithUsernames !== usernameRecords.size) {
-                result.inconsistencies.push(
-                    `Mismatch: ${result.profilesWithUsernames} profiles with usernames vs ${usernameRecords.size} active username records`
-                );
-            }
-
-            // Check for orphaned username records
-            for (const [username, record] of usernameRecords) {
-                if (!profileUsernames.has(username)) {
-                    result.inconsistencies.push(
-                        `Orphaned username record: ${username} (userId: ${record.userId})`
-                    );
-                }
-            }
-
-            // Check for profiles with usernames but no username records
-            for (const username of profileUsernames) {
-                if (!usernameRecords.has(username)) {
-                    result.inconsistencies.push(
-                        `Profile has username "${username}" but no corresponding username record`
-                    );
-                }
-            }
+            // Username records are deprecated; validation only checks profiles
 
             if (result.profilesWithLegacyFields > 0) {
                 result.inconsistencies.push(

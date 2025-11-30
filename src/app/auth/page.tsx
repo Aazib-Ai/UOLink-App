@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import UploadModalLazy from '@/components/UploadModalLazy'
 
 export default function AuthPage() {
@@ -17,6 +17,7 @@ export default function AuthPage() {
     clearError
   } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [email, setEmail] = useState('')
@@ -43,14 +44,14 @@ export default function AuthPage() {
       await authenticateWithEmail(email.trim(), password, mode)
       if (mode === 'register') {
         try {
-          setStatus('Ensuring your username...')
           const { ensureUsername } = await import('@/lib/api/username')
           await ensureUsername()
         } catch (e) {
-          console.warn('Failed to ensure username:', e)
+          console.error('Failed to create profile:', e)
+          // Don't block the flow, but log the error
         }
-        setStatus('Registration successful! Check your university inbox for a verification email before continuing.')
-        setVerificationMessage(`A verification link was sent to ${email.trim()}.`)
+        setStatus('Registration successful! Redirecting to verification...')
+        router.push('/auth/verify')
         return
       }
 
@@ -71,26 +72,24 @@ export default function AuthPage() {
       setSubmitting(true)
       await signInWithGoogle()
 
-      // Ensure a username is assigned immediately after sign-in
       try {
-        setStatus('Ensuring your username...')
         const { ensureUsername } = await import('@/lib/api/username')
         await ensureUsername()
       } catch (e) {
-        // Non-blocking: continue to profile completion; failures are logged in server
-        console.warn('Failed to ensure username:', e)
+        console.error('Failed to create profile:', e)
+        setStatus('Failed to create profile. Please try again.')
+        return
       }
 
-      // Check if user has completed their profile
       setStatus('Checking profile status...')
-
-      // Import the function to check profile completion
       const { checkProfileCompletion } = await import('@/lib/profile/completion')
       const isProfileComplete = await checkProfileCompletion()
 
       if (isProfileComplete) {
-        setStatus('Signed in with Google successfully. Redirecting to dashboard...')
-        router.push('/')
+        const redirectParam = searchParams.get('redirect')
+        const safeRedirect = redirectParam && redirectParam.startsWith('/') ? redirectParam : null
+        setStatus('Signed in with Google successfully. Redirecting...')
+        router.push(safeRedirect || '/')
       } else {
         setStatus('Welcome! Please complete your profile to continue.')
         router.push('/complete-profile')
@@ -128,11 +127,10 @@ export default function AuthPage() {
 
             {user && (
               <div
-                className={`mb-6 rounded-lg border p-4 ${
-                  user.emailVerified
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : 'border-amber-200 bg-amber-50 text-amber-900'
-                }`}
+                className={`mb-6 rounded-lg border p-4 ${user.emailVerified
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+                  }`}
               >
                 {user.emailVerified ? (
                   <>

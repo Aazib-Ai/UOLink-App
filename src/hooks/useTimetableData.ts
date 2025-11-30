@@ -4,21 +4,23 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { getTimetable, setTimetable, clearTimetable, TimetableRecord } from '@/lib/idb/timetable'
 
 export type TimetableEntry = {
-    day: string
-    department: string
-    sub_department: string
-    time_slot: string
-    room_name: string
-    subject: string
-    course_code: string
-    program: string
-    semester: string
-    section: string
-    teacher_name: string
-    teacher_sap_id: string
-    raw_text: string
-    is_lab_session?: string
-    lab_duration?: string
+  day: string
+  department: string
+  sub_department: string
+  time_slot: string
+  room_name: string
+  subject: string
+  course_code: string
+  program: string
+  semester: string
+  section: string
+  teacher_name: string
+  teacher_sap_id: string
+  raw_text: string
+  is_lab_session?: string
+  lab_duration?: string
+  is_merged_class?: string
+  merged_programs?: { program: string; semester: string; section: string }[] | string
 }
 
 type ApiPayload = { data: TimetableEntry[]; meta: { expiresAt: number; version: string; etag?: string; updatedAt: number } }

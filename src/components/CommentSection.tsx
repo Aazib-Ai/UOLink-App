@@ -81,6 +81,8 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
 
+  const COMMENTS_DISABLED = (process.env.NEXT_PUBLIC_COMMENTS_DISABLED !== 'false') && (process.env.NEXT_PUBLIC_COMMENTS_ENABLED !== 'true')
+
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const commentsEndRef = useRef<HTMLDivElement>(null)
   const lastVisibleRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null)
@@ -172,6 +174,11 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
       return
     }
 
+    if (COMMENTS_DISABLED) {
+      setError('Comments are temporarily disabled.')
+      return
+    }
+
     setIsSubmitting(true)
     setError(null)
 
@@ -218,6 +225,10 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
   }
 
   const handleLikeComment = async (commentId: string) => {
+    if (COMMENTS_DISABLED) {
+      setError('Comments are temporarily disabled.')
+      return
+    }
     try {
       const isLiked = await likeComment(noteId, commentId)
 
@@ -245,6 +256,11 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
   const handleDeleteComment = async (commentId: string, commentOwnerId: string) => {
     if (!user) {
       setShowLoginPrompt(true)
+      return
+    }
+
+    if (COMMENTS_DISABLED) {
+      setError('Comments are temporarily disabled.')
       return
     }
 
@@ -306,6 +322,11 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     const trimmed = target.replyDraft.trim()
     if (!trimmed) {
       setError('Please write a reply before posting.')
+      return
+    }
+
+    if (COMMENTS_DISABLED) {
+      setError('Comments are temporarily disabled.')
       return
     }
 
@@ -454,6 +475,11 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
       </header>
 
       <div className="space-y-5 px-4 py-5 md:px-6">
+        {COMMENTS_DISABLED && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm font-medium text-amber-700 shadow-sm">
+            Comments are temporarily disabled.
+          </div>
+        )}
         {!user && (
           <div
             className={`flex flex-col gap-3 rounded-2xl border ${
@@ -515,13 +541,14 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                 <textarea
                   ref={textareaRef}
                   value={newComment}
-                  onChange={(event) => setNewComment(event.target.value)}
+                  onChange={(event) => setNewComment(event.target.value)
+                  }
                   placeholder={
                     user
                       ? 'Share something helpful for your classmates...'
                       : 'Sign in to share what you found helpful.'
                   }
-                  disabled={!user || isSubmitting}
+                  disabled={!user || isSubmitting || COMMENTS_DISABLED}
                   className="w-full min-h-[72px] max-h-48 resize-none rounded-2xl border border-amber-100 bg-white/80 px-4 py-3 text-sm text-slate-700 shadow-inner transition-all placeholder:text-slate-400 focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/25 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -530,7 +557,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                   </span>
                   <button
                     type="submit"
-                    disabled={isSubmitting || !newComment.trim() || !user}
+                    disabled={isSubmitting || !newComment.trim() || !user || COMMENTS_DISABLED}
                     className="inline-flex min-h-[36px] items-center gap-2 rounded-full bg-[#90c639] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#7ab332] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
                     {isSubmitting ? (
@@ -600,16 +627,17 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                           </p>
 
                           <div className="mt-3 flex flex-wrap items-center gap-2.5">
-                            <button
-                              type="button"
-                              onClick={() => handleLikeComment(comment.id)}
-                              aria-pressed={isLiked}
-                              className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors duration-150 ${
-                                isLiked
-                                  ? 'border-rose-200 bg-rose-50 text-rose-500'
-                                  : 'border-transparent text-slate-500 hover:border-rose-200 hover:bg-rose-50/70 hover:text-rose-500'
-                              }`}
-                            >
+                <button
+                  type="button"
+                  onClick={() => handleLikeComment(comment.id)}
+                  aria-pressed={isLiked}
+                  disabled={COMMENTS_DISABLED}
+                  className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors duration-150 ${
+                    isLiked
+                      ? 'border-rose-200 bg-rose-50 text-rose-500'
+                      : 'border-transparent text-slate-500 hover:border-rose-200 hover:bg-rose-50/70 hover:text-rose-500'
+                  }`}
+                >
                               <Heart className={`h-3.5 w-3.5 ${isLiked ? 'fill-current' : ''}`} />
                               <span>{Math.max(comment.likes, 0)}</span>
                             </button>
@@ -627,16 +655,17 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                                 : 'Reply'}
                             </button>
 
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteComment(comment.id, comment.userId)}
-                                className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </button>
-                            )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteComment(comment.id, comment.userId)}
+                    disabled={COMMENTS_DISABLED}
+                    className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                )}
                           </div>
 
                           {comment.showReplies && (
@@ -662,12 +691,13 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
                                       handleReplyDraftChange(comment.id, event.target.value)
                                     }
                                     placeholder="Write a reply..."
+                                    disabled={COMMENTS_DISABLED}
                                     className="w-full min-h-[60px] resize-none rounded-xl border border-amber-100 bg-white/80 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
                                   />
                                   <div className="flex justify-end">
                                     <button
                                       type="submit"
-                                      disabled={comment.replySubmitting || !comment.replyDraft.trim()}
+                                      disabled={comment.replySubmitting || !comment.replyDraft.trim() || COMMENTS_DISABLED}
                                       className="inline-flex min-h-[32px] items-center gap-2 rounded-full bg-[#90c639] px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#7ab332] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                                     >
                                       {comment.replySubmitting ? (

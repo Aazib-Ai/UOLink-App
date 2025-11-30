@@ -18,6 +18,8 @@ export type TimetableEntry = {
   raw_text: string
   is_lab_session?: string
   lab_duration?: string
+  is_merged_class?: string
+  merged_programs?: { program: string; semester: string; section: string }[] | string
 }
 
 export type TimetableRecord = {
@@ -118,4 +120,3 @@ export async function setTimetable(record: TimetableRecord): Promise<void> {
 export async function clearTimetable(): Promise<void> {
   await idbDel(TIMETABLE_KEY)
 }
-

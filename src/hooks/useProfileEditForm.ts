@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { db } from '@/lib/firebase'
 import { syncUserProfileReferences } from '@/lib/firebase/profile-sync'
 import { slugify } from '@/lib/utils'
-import { doc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { uploadProfilePicture, deleteProfilePicture } from '@/lib/api/profile-picture'
 import { updateProfile } from '@/lib/api/profiles'
 
@@ -89,13 +89,20 @@ const mapSnapshotToProfileData = (uid: string, data: Record<string, any>): Profi
     return Number.isNaN(parsed.getTime()) ? undefined : parsed
   }
 
+  const normalizeSemesterForUi = (value: any): string => {
+    const raw = typeof value === 'string' ? value.trim() : ''
+    if (!raw) return ''
+    const match = raw.match(/^(?:Semester\s*)?(\d)$/i)
+    return match ? `Semester ${match[1]}` : raw
+  }
+
   return {
     id: uid,
     fullName: data.fullName ?? '',
     username: data.username ?? undefined,
     usernameLastChanged: toDateValue(data.usernameLastChanged),
     major: data.major ?? '',
-    semester: data.semester ?? '',
+    semester: normalizeSemesterForUi(data.semester),
     section: data.section ?? '',
     bio: data.bio ?? '',
     about: data.about ?? '',
@@ -326,12 +333,18 @@ export function useProfileEditForm() {
         }
       }
 
-      // Update via server API wrapper
+      const sanitizedSemesterForUpload = (() => {
+        const raw = (profileData.semester || '').trim()
+        if (!raw) return ''
+        const match = raw.match(/(\d+)/)
+        return match ? match[1] : raw
+      })()
+      const sanitizedSectionForUpload = (profileData.section || '').trim().toUpperCase()
       const apiRes = await updateProfile(user.uid, {
         fullName: profileData.fullName.trim(),
         major: profileData.major || '',
-        semester: profileData.semester || '',
-        section: profileData.section || '',
+        semester: sanitizedSemesterForUpload,
+        section: sanitizedSectionForUpload,
         bio: profileData.bio || '',
         about: profileData.about || '',
         skills: profileData.skills || [],
@@ -511,10 +524,17 @@ export function useProfileEditForm() {
       const sanitizedFullName = profileData.fullName.trim()
       const sanitizedBio = profileData.bio.trim()
       const sanitizedAbout = profileData.about.trim()
-      const sanitizedGithubUrl = processSocialUrl(profileData.githubUrl, 'github')
-      const sanitizedLinkedinUrl = processSocialUrl(profileData.linkedinUrl, 'linkedin')
-      const sanitizedInstagramUrl = processSocialUrl(profileData.instagramUrl, 'instagram')
-      const sanitizedFacebookUrl = processSocialUrl(profileData.facebookUrl, 'facebook')
+    const sanitizedGithubUrl = processSocialUrl(profileData.githubUrl, 'github')
+    const sanitizedLinkedinUrl = processSocialUrl(profileData.linkedinUrl, 'linkedin')
+    const sanitizedInstagramUrl = processSocialUrl(profileData.instagramUrl, 'instagram')
+    const sanitizedFacebookUrl = processSocialUrl(profileData.facebookUrl, 'facebook')
+    const sanitizedSemester = (() => {
+      const raw = (profileData.semester || '').trim()
+      if (!raw) return ''
+      const match = raw.match(/(\d+)/)
+      return match ? match[1] : raw
+    })()
+    const sanitizedSection = (profileData.section || '').trim().toUpperCase()
 
       const sanitizedProfile = cloneProfileData({
         ...profileData,
@@ -532,8 +552,8 @@ export function useProfileEditForm() {
       const apiRes = await updateProfile(user.uid, {
         fullName: sanitizedProfile.fullName,
         major: sanitizedProfile.major,
-        semester: sanitizedProfile.semester,
-        section: sanitizedProfile.section,
+        semester: sanitizedSemester,
+        section: sanitizedSection,
         bio: sanitizedProfile.bio,
         about: sanitizedProfile.about,
         skills: sanitizedProfile.skills,
@@ -579,7 +599,65 @@ export function useProfileEditForm() {
       pushSuccessMessage('Profile updated successfully!')
 
     } catch (err) {
-      setError('Failed to update profile. Please try again.')
+      let didFallback = false
+      try {
+        if (user?.uid) {
+          const sanitizedGithubUrl = processSocialUrl(profileData.githubUrl, 'github')
+          const sanitizedLinkedinUrl = processSocialUrl(profileData.linkedinUrl, 'linkedin')
+          const sanitizedInstagramUrl = processSocialUrl(profileData.instagramUrl, 'instagram')
+          const sanitizedFacebookUrl = processSocialUrl(profileData.facebookUrl, 'facebook')
+          const sanitizedSemester = (() => {
+            const raw = (profileData.semester || '').trim()
+            if (!raw) return ''
+            const match = raw.match(/(\d+)/)
+            return match ? match[1] : raw
+          })()
+          const sanitizedSection = (profileData.section || '').trim().toUpperCase()
+          const sanitizedBio = profileData.bio.trim()
+          const sanitizedAbout = profileData.about.trim()
+          const payload: Record<string, any> = {
+            major: profileData.major || undefined,
+            semester: sanitizedSemester || undefined,
+            section: sanitizedSection || undefined,
+            bio: sanitizedBio || undefined,
+            about: sanitizedAbout || undefined,
+            skills: Array.isArray(profileData.skills) ? profileData.skills : undefined,
+            githubUrl: sanitizedGithubUrl || undefined,
+            linkedinUrl: sanitizedLinkedinUrl || undefined,
+            instagramUrl: sanitizedInstagramUrl || undefined,
+            facebookUrl: sanitizedFacebookUrl || undefined,
+            profilePicture: profileData.profilePicture ?? undefined,
+            profileCompleted: true,
+            updatedAt: serverTimestamp(),
+          }
+          Object.keys(payload).forEach((k) => (payload as any)[k] === undefined && delete (payload as any)[k])
+          await updateDoc(doc(db, 'profiles', user.uid), payload)
+          const nextInitial = cloneProfileData({
+            ...profileData,
+            bio: sanitizedBio,
+            about: sanitizedAbout,
+            githubUrl: sanitizedGithubUrl,
+            linkedinUrl: sanitizedLinkedinUrl,
+            instagramUrl: sanitizedInstagramUrl,
+            facebookUrl: sanitizedFacebookUrl,
+            semester: sanitizedSemester,
+            section: sanitizedSection,
+          })
+          initialProfileDataRef.current = nextInitial
+          profileCache.set(user.uid, cloneProfileData(nextInitial))
+          setProfileData(nextInitial)
+          setPreviewImage(nextInitial.profilePicture)
+          setHasChanges(false)
+          pushSuccessMessage('Profile updated successfully!')
+          didFallback = true
+        }
+      } catch {}
+      if (!didFallback) {
+        const msg = err instanceof Error && /ERR_CONNECTION_REFUSED|Failed to fetch/i.test(err.message)
+          ? 'Cannot connect to server. Start the dev server and try again.'
+          : 'Failed to update profile. Please try again.'
+        setError(msg)
+      }
     } finally {
       setIsSubmitting(false)
     }

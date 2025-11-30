@@ -11,6 +11,7 @@ type DaySelectorProps = {
 
 export function DaySelector({ days, densities, selectedDay, onSelect }: DaySelectorProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const startPosRef = React.useRef<{ x: number; y: number } | null>(null)
 
   const maxDensity = Math.max(1, ...days.map((d) => densities[d] || 0))
 
@@ -25,15 +26,38 @@ export function DaySelector({ days, densities, selectedDay, onSelect }: DaySelec
     nextEl?.focus()
   }
 
+  const handleTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    const t = e.touches[0]
+    if (!t) return
+    startPosRef.current = { x: t.clientX, y: t.clientY }
+  }
+
+  const handleTouchEnd: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    const s = startPosRef.current
+    startPosRef.current = null
+    if (!s) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    const threshold = 80
+    const dominant = Math.abs(dx) > Math.abs(dy) * 2
+    if (Math.abs(dx) >= threshold && dominant) {
+      const idx = Math.max(0, days.indexOf(selectedDay))
+      const nextIdx = dx > 0 ? Math.max(0, idx - 1) : Math.min(days.length - 1, idx + 1)
+      if (nextIdx !== idx) onSelect(days[nextIdx])
+    }
+  }
+
   return (
     <div className="mt-3" aria-label="Select day">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#334125]">Day</h3>
-        <span className="text-xs text-[#4c5c3c]">Schedule density preview</span>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Select Day</h3>
+        <span className="text-xs text-neutral-500 dark:text-neutral-400">Schedule density</span>
       </div>
-      <div ref={containerRef} role="tablist" aria-label="Days" className="mt-2">
+      <div ref={containerRef} role="tablist" aria-label="Days" className="mt-2" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         {/* Mobile: two-line grid, Desktop: wrap */}
-        <div className="grid grid-cols-3 gap-1.5 px-1 py-1 sm:flex sm:flex-wrap sm:gap-1.5">
+        <div className="grid grid-cols-3 gap-2 px-1 py-1 sm:flex sm:flex-wrap sm:gap-2">
           {days.map((day) => {
             const count = densities[day] || 0
             const fillPct = Math.round((count / maxDensity) * 100)
@@ -51,10 +75,10 @@ export function DaySelector({ days, densities, selectedDay, onSelect }: DaySelec
                 onKeyDown={handleKeyDown}
                 onClick={() => onSelect(day)}
                 className={[
-                  'inline-flex w-full sm:w-auto items-center justify-between gap-2 rounded-full border text-xs font-semibold px-2.5 py-1 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#90c639]/40',
+                  'inline-flex w-full sm:w-auto items-center justify-between gap-2 rounded-lg border text-xs font-semibold px-3 py-2 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-lime-500/40',
                   selected
-                    ? 'bg-[#ecf8cf] text-[#1f2f10] border-[#90c639] ring-2 ring-[#90c639]/40'
-                    : 'bg-white text-[#334125] border-lime-200 hover:border-[#90c639] hover:text-[#1f2f10]'
+                    ? 'bg-lime-500 text-white border-lime-600 ring-1 ring-lime-500 shadow-md'
+                    : 'bg-white text-neutral-700 border-neutral-200 hover:border-lime-500 hover:text-lime-700 dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700 dark:hover:border-lime-500 dark:hover:text-lime-400'
                 ].join(' ')}
                 aria-label={`${day} (${count} classes, ${lvlLabel} schedule)`}
                 title={`${lvlLabel} schedule`}
@@ -64,16 +88,16 @@ export function DaySelector({ days, densities, selectedDay, onSelect }: DaySelec
                 <span className="relative sm:hidden inline-flex h-4 w-4" aria-hidden="true">
                   <span
                     className="absolute inset-0 rounded-full"
-                    style={{ background: `conic-gradient(#90c639 ${fillPct}%, #e5e7eb 0)` }}
+                    style={{ background: `conic-gradient(${selected ? '#d9f99d' : '#84cc16'} ${fillPct}%, ${selected ? 'rgba(255,255,255,0.3)' : '#e5e7eb'} 0)` }}
                   />
-                  <span className="absolute inset-[3px] rounded-full bg-white" />
+                  <span className={`absolute inset-[3px] rounded-full ${selected ? 'bg-lime-500' : 'bg-white dark:bg-neutral-800'}`} />
                 </span>
                 <span
                   aria-hidden="true"
-                  className="relative hidden sm:inline-flex h-2 w-12 md:w-16 rounded-full bg-neutral-200 overflow-hidden"
+                  className={`relative hidden sm:inline-flex h-1.5 w-12 md:w-16 rounded-full overflow-hidden ${selected ? 'bg-lime-700/30' : 'bg-neutral-100 dark:bg-neutral-700'}`}
                 >
                   <span
-                    className="absolute left-0 top-0 h-full bg-[#90c639] transition-[width] duration-300"
+                    className={`absolute left-0 top-0 h-full transition-[width] duration-300 ${selected ? 'bg-white' : 'bg-lime-500'}`}
                     style={{ width: `${fillPct}%` }}
                   />
                 </span>

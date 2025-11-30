@@ -68,31 +68,6 @@ The project pairs the App Router with Firebase for auth, data, and serverless wo
    npm run start
    ```
 
-## Environment Variables
-
-All values go in `.env.local`. Firebase web keys are public; admin and R2 credentials must stay private.
-
-| Variable | Description |
-| --- | --- |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase web API key. |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase auth domain. |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firestore project id. |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Storage bucket for uploads. |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Messaging sender id. |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase app id. |
-| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Optional analytics id. |
-| `NEXT_PUBLIC_ADMIN_EMAIL` | Email address treated as dashboard admin. |
-| `NEXT_PUBLIC_APP_URL` | Base URL for links; defaults to `http://localhost:3000`. |
-| `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` | Public CDN/base URL for files stored in R2. |
-| `FIREBASE_ADMIN_CLIENT_EMAIL` | Service account email for Firebase Admin SDK. |
-| `FIREBASE_ADMIN_PRIVATE_KEY` | Service account private key (quoted string with `\n`). |
-| `CLOUDFLARE_R2_ACCOUNT_ID` | Cloudflare account id for R2. |
-| `CLOUDFLARE_R2_ACCESS_KEY_ID` & `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | R2 API credentials. |
-| `CLOUDFLARE_R2_BUCKET_NAME` | Bucket the app writes to. |
-| `CLOUDFLARE_R2_PUBLIC_BASE_URL` | Public URL for serving uploaded files. |
-| `CLOUDFLARE_R2_ENDPOINT` | Optional custom endpoint override. |
-
-If you do not have R2 enabled yet, provide placeholder values so the client can initialize; uploading will simply fail gracefully until real credentials are supplied.
 
 ## Common Scripts
 

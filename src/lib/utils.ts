@@ -6,9 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function toTitleCase(str: string) {
-  return str.replace(/\w\S*/g, function (txt) {
-    return txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase();
-  });
+  // Split by spaces only to preserve special characters like &
+  return str.split(' ').map(word => {
+    if (!word) return word;
+    return word.charAt(0).toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
 }
 
 export function normalizeForStorage(str: string) {

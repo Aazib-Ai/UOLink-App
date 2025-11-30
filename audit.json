@@ -1,0 +1,273 @@
+﻿{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "dompurify": {
+      "name": "dompurify",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1105772,
+          "name": "dompurify",
+          "dependency": "dompurify",
+          "title": "DOMPurify allows Cross-site Scripting (XSS)",
+          "url": "https://github.com/advisories/GHSA-vhxf-7vqr-mrjg",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 4.5,
+            "vectorString": "CVSS:3.1/AV:L/AC:H/PR:N/UI:N/S:C/C:L/I:L/A:N"
+          },
+          "range": "<3.2.4"
+        }
+      ],
+      "effects": [
+        "jspdf"
+      ],
+      "range": "<3.2.4",
+      "nodes": [
+        "node_modules/dompurify"
+      ],
+      "fixAvailable": {
+        "name": "jspdf",
+        "version": "3.0.3",
+        "isSemVerMajor": true
+      }
+    },
+    "jspdf": {
+      "name": "jspdf",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1103308,
+          "name": "jspdf",
+          "dependency": "jspdf",
+          "title": "jsPDF Bypass Regular Expression Denial of Service (ReDoS)",
+          "url": "https://github.com/advisories/GHSA-w532-jxjh-hjhj",
+          "severity": "high",
+          "cwe": [
+            "CWE-400",
+            "CWE-770"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<3.0.1"
+        },
+        {
+          "source": 1107412,
+          "name": "jspdf",
+          "dependency": "jspdf",
+          "title": "jsPDF Denial of Service (DoS)",
+          "url": "https://github.com/advisories/GHSA-8mvj-3j78-4qmw",
+          "severity": "high",
+          "cwe": [
+            "CWE-20",
+            "CWE-835"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=3.0.1"
+        },
+        "dompurify"
+      ],
+      "effects": [],
+      "range": "<=3.0.1",
+      "nodes": [
+        "node_modules/jspdf"
+      ],
+      "fixAvailable": {
+        "name": "jspdf",
+        "version": "3.0.3",
+        "isSemVerMajor": true
+      }
+    },
+    "next": {
+      "name": "next",
+      "severity": "critical",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1101437,
+          "name": "next",
+          "dependency": "next",
+          "title": "Next.js Allows a Denial of Service (DoS) with Server Actions",
+          "url": "https://github.com/advisories/GHSA-7m27-7ghc-44w9",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-770"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": ">=15.0.0 <15.1.2"
+        },
+        {
+          "source": 1105462,
+          "name": "next",
+          "dependency": "next",
+          "title": "Information exposure in Next.js dev server due to lack of origin verification",
+          "url": "https://github.com/advisories/GHSA-3h52-269p-cp9r",
+          "severity": "low",
+          "cwe": [
+            "CWE-1385"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": ">=15.0.0 <15.2.2"
+        },
+        {
+          "source": 1107228,
+          "name": "next",
+          "dependency": "next",
+          "title": "Next.js Affected by Cache Key Confusion for Image Optimization API Routes",
+          "url": "https://github.com/advisories/GHSA-g5qg-72qw-gw5v",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-524"
+          ],
+          "cvss": {
+            "score": 6.2,
+            "vectorString": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": ">=15.0.0 <=15.4.4"
+        },
+        {
+          "source": 1107514,
+          "name": "next",
+          "dependency": "next",
+          "title": "Next.js Content Injection Vulnerability for Image Optimization",
+          "url": "https://github.com/advisories/GHSA-xv57-4mr9-wg8v",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-20"
+          ],
+          "cvss": {
+            "score": 4.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N"
+          },
+          "range": ">=15.0.0 <=15.4.4"
+        },
+        {
+          "source": 1107515,
+          "name": "next",
+          "dependency": "next",
+          "title": "Next.js Improper Middleware Redirect Handling Leads to SSRF",
+          "url": "https://github.com/advisories/GHSA-4342-x723-ch2f",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-918"
+          ],
+          "cvss": {
+            "score": 6.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:N"
+          },
+          "range": ">=15.0.0-canary.0 <15.4.7"
+        },
+        {
+          "source": 1108410,
+          "name": "next",
+          "dependency": "next",
+          "title": "Next.js Race Condition to Cache Poisoning",
+          "url": "https://github.com/advisories/GHSA-qpjv-v59x-3qc4",
+          "severity": "low",
+          "cwe": [
+            "CWE-362"
+          ],
+          "cvss": {
+            "score": 3.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          },
+          "range": ">=15.0.0 <15.1.6"
+        },
+        {
+          "source": 1108952,
+          "name": "next",
+          "dependency": "next",
+          "title": "Authorization Bypass in Next.js Middleware",
+          "url": "https://github.com/advisories/GHSA-f82v-jwr5-mffw",
+          "severity": "critical",
+          "cwe": [
+            "CWE-285",
+            "CWE-863"
+          ],
+          "cvss": {
+            "score": 9.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+          },
+          "range": ">=15.0.0 <15.2.3"
+        }
+      ],
+      "effects": [],
+      "range": "15.0.0-canary.0 - 15.4.6",
+      "nodes": [
+        "node_modules/next"
+      ],
+      "fixAvailable": {
+        "name": "next",
+        "version": "15.5.6",
+        "isSemVerMajor": false
+      }
+    },
+    "pdfjs-dist": {
+      "name": "pdfjs-dist",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1104044,
+          "name": "pdfjs-dist",
+          "dependency": "pdfjs-dist",
+          "title": "PDF.js vulnerable to arbitrary JavaScript execution upon opening a malicious PDF",
+          "url": "https://github.com/advisories/GHSA-wgrm-67xf-hhpq",
+          "severity": "high",
+          "cwe": [
+            "CWE-754"
+          ],
+          "cvss": {
+            "score": 8.8,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+          },
+          "range": "<=4.1.392"
+        }
+      ],
+      "effects": [],
+      "range": "<=4.1.392",
+      "nodes": [
+        "node_modules/pdfjs-dist"
+      ],
+      "fixAvailable": {
+        "name": "pdfjs-dist",
+        "version": "5.4.394",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 2,
+      "critical": 1,
+      "total": 4
+    },
+    "dependencies": {
+      "prod": 521,
+      "dev": 275,
+      "optional": 172,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 918
+    }
+  }
+}

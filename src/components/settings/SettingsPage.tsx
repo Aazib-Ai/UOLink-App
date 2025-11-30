@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Settings, ArrowLeft } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import Navbar from '../Navbar'
-import UsernameChangeSection from '../profile/edit/UsernameChangeSection'
 import PasswordChangeSection from './PasswordChangeSection'
 import { useProfileEditForm } from '@/hooks/useProfileEditForm'
 
@@ -66,7 +65,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <p className="mt-3 sm:mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">
-                  Control your profile visibility, username, and other account preferences. Keep your information up to date and manage how others find you.
+                  Control your profile visibility and account preferences. Keep your information up to date and manage how others find you.
                 </p>
               </div>
             </div>
@@ -74,17 +73,6 @@ export default function SettingsPage() {
 
           {/* Settings Sections */}
           <div className="space-y-4 sm:space-y-6">
-            {/* Profile URL Section */}
-            <UsernameChangeSection
-              currentUsername={profileData.username}
-              userId={profileData.id}
-              usernameLastChanged={profileData.usernameLastChanged}
-              onUsernameChanged={(newUsername) => {
-                // The username change is handled by the UsernameChangeSection component
-                // through the useProfileEditForm hook
-              }}
-            />
-
             {/* Password Change Section */}
             <PasswordChangeSection />
 
@@ -100,6 +88,7 @@ export default function SettingsPage() {
               </div>
               <p className="text-sm text-gray-600 leading-relaxed">
                 More settings options will be available soon, including privacy controls, notification preferences, and account security settings.
+                Usernames are now fixed to your university roll number and cannot be changed.
               </p>
             </div>
           </div>

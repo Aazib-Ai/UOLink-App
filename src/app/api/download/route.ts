@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveUploadDescriptorByMime } from '@/constants/uploadFileTypes'
+import { sanitizeFilename } from '@/lib/security/validation'
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
@@ -47,11 +48,12 @@ export async function GET(request: NextRequest) {
         const normalizedContentType = contentTypeHeader.split(';')[0]?.trim().toLowerCase() || 'application/octet-stream'
         const descriptor = resolveUploadDescriptorByMime(normalizedContentType)
         const fallbackExtension = descriptor?.extension || 'bin'
-        const hasExtension = requestedFilename.includes('.')
-        const safeFilename = requestedFilename
+        const base = sanitizeFilename(requestedFilename, 128)
+        const hasExtension = base.includes('.')
+        const safeFilename = base
             ? hasExtension
-                ? requestedFilename
-                : `${requestedFilename}.${fallbackExtension}`
+                ? base
+                : `${base}.${fallbackExtension}`
             : `document.${fallbackExtension}`
 
         // Create response with proper download headers

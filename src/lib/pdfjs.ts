@@ -6,7 +6,7 @@ export const loadPdfJs = async () => {
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf')
 
       if (typeof window !== 'undefined') {
-        // @ts-ignore - PDF.js worker module doesn't have proper types
+        // @ts-expect-error - PDF.js worker module doesn't have proper types
         const workerSrcModule = await import('pdfjs-dist/legacy/build/pdf.worker')
         const workerSrc = (workerSrcModule as any).default || workerSrcModule
 

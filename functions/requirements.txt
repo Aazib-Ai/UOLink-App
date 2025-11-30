@@ -1,0 +1,5 @@
+firebase-functions==0.5.0
+firebase-admin==6.5.0
+requests==2.32.3
+boto3==1.35.58
+tzdata==2025.1

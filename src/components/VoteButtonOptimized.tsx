@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { ArrowBigUp, ArrowBigDown } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { db } from '@/lib/firebase'
-import { voteOnNoteOptimized } from '@/lib/firebase/notes-optimized'
-import { doc, getDoc } from 'firebase/firestore'
+import { voteOnNote } from '@/lib/api/notes'
+import { fetchVotesIndexEfficient } from '@/lib/firebase/saved-notes-index'
 
 interface VoteButtonProps {
   noteId: string
@@ -90,55 +90,37 @@ export default function VoteButtonOptimized({
 
   const sizeConfig = SIZE_CONFIGS[size]
 
-  // Fetch initial vote data only once when component mounts
   useEffect(() => {
-    let isMounted = true
-    
-    const fetchVoteData = async () => {
-      if (!noteId || !user) {
-        // If no user, just use initial values
-        setVoteData({
-          upvotes: initialUpvotes,
-          downvotes: initialDownvotes,
-          userVote: null
-        })
+    let mounted = true
+    const init = async () => {
+      if (!noteId) return
+      if (!user) {
+        setVoteData({ upvotes: initialUpvotes, downvotes: initialDownvotes, userVote: null })
         return
       }
-
-      try {
-        // Get both vote counts from note document and user vote in parallel
-        const [noteSnap, userVoteSnap] = await Promise.all([
-          getDoc(doc(db, 'notes', noteId)),
-          getDoc(doc(db, 'userVotes', user.uid, 'votes', noteId))
-        ])
-
-        if (!isMounted) return
-
-        // Read vote counts from the note document itself (not from noteVotes collection)
-        const upvotes = noteSnap.exists() ? (noteSnap.data()?.upvoteCount || 0) : initialUpvotes
-        const downvotes = noteSnap.exists() ? (noteSnap.data()?.downvoteCount || 0) : initialDownvotes
-        const userVote = userVoteSnap.exists() ? (userVoteSnap.data()?.voteType as 'up' | 'down') : null
-
-        setVoteData({ upvotes, downvotes, userVote })
-      } catch (err) {
-        if (isMounted) {
-          console.error('Error fetching vote data:', err)
-          // Fallback to initial values on error
-          setVoteData({
-            upvotes: initialUpvotes,
-            downvotes: initialDownvotes,
-            userVote: null
-          })
-        }
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = window.localStorage.getItem(`votesIndex:${user.uid}`)
+          const parsed = raw ? JSON.parse(raw) : null
+          if (parsed && Array.isArray(parsed.up) && Array.isArray(parsed.down)) {
+            const uv = parsed.up.includes(noteId) ? 'up' : parsed.down.includes(noteId) ? 'down' : null
+            setVoteData({ upvotes: initialUpvotes, downvotes: initialDownvotes, userVote: uv })
+          }
+        } catch {}
       }
+      const idx = await fetchVotesIndexEfficient(user.uid)
+      if (!mounted) return
+      const uv = idx.up.includes(noteId) ? 'up' : idx.down.includes(noteId) ? 'down' : null
+      setVoteData({ upvotes: initialUpvotes, downvotes: initialDownvotes, userVote: uv })
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(`votesIndex:${user.uid}`, JSON.stringify(idx))
+        }
+      } catch {}
     }
-
-    fetchVoteData()
-    
-    return () => {
-      isMounted = false
-    }
-  }, [noteId, user?.uid]) // Removed initialUpvotes and initialDownvotes from dependencies
+    init()
+    return () => { mounted = false }
+  }, [noteId, user?.uid])
 
   // Update vote data when initial values change (from parent component updates)
   useEffect(() => {
@@ -242,7 +224,7 @@ export default function VoteButtonOptimized({
 
     try {
       // Make the actual API call
-      const result = await voteOnNoteOptimized(noteId, voteType)
+      const result = await voteOnNote(noteId, voteType)
       
       console.log(`Vote successful - noteId: ${noteId}, result:`, result)
       
@@ -252,6 +234,19 @@ export default function VoteButtonOptimized({
         downvotes: result.downvotes,
         userVote: result.userVote
       })
+      try {
+        if (user && typeof window !== 'undefined') {
+          const raw = window.localStorage.getItem(`votesIndex:${user.uid}`)
+          const parsed = raw ? JSON.parse(raw) : null
+          let up: string[] = Array.isArray(parsed?.up) ? parsed.up : []
+          let down: string[] = Array.isArray(parsed?.down) ? parsed.down : []
+          up = up.filter((id) => id !== noteId)
+          down = down.filter((id) => id !== noteId)
+          if (result.userVote === 'up') up.push(noteId)
+          else if (result.userVote === 'down') down.push(noteId)
+          window.localStorage.setItem(`votesIndex:${user.uid}`, JSON.stringify({ up, down }))
+        }
+      } catch {}
       
       // Notify parent component
       try {
