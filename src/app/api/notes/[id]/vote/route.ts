@@ -116,19 +116,49 @@ export async function POST(
                 tx.set(noteRef, noteScoreUpdate, { merge: true })
 
                 const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-                if (uploaderId && Number.isFinite(auraDelta) && auraDelta !== 0) {
+                if (uploaderId) {
                     const profileRef = db.collection('profiles').doc(uploaderId)
+
+                    // Compute deltas for totals and credibility
+                    const upDelta = upvotes - scoreState.upvoteCount
+                    const downDelta = downvotes - scoreState.downvoteCount
+                    const prevCred = Number((noteData as any).credibilityScore || 0)
+                    const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
+                    const credDelta = nextCred - prevCred
+
+                    // Read current stats to update average credibility safely
+                    const profSnap = await tx.get(profileRef)
+                    const pData = profSnap.exists ? (profSnap.data() as any) : {}
+                    const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
+                    const avg = Number(pData.averageCredibility || 0)
+                    const sumPrev = avg * totalNotes
+                    const sumNext = sumPrev + credDelta
+                    const avgNext = totalNotes > 0 ? sumNext / totalNotes : 0
+
                     tx.set(
                         profileRef,
-                        { aura: FieldValue.increment(auraDelta), auraUpdatedAt: FieldValue.serverTimestamp() },
+                        {
+                            aura: FieldValue.increment(auraDelta || 0),
+                            auraUpdatedAt: FieldValue.serverTimestamp(),
+                            totalUpvotes: FieldValue.increment(upDelta),
+                            totalDownvotes: FieldValue.increment(downDelta),
+                            averageCredibility: avgNext,
+                            lastStatsUpdate: FieldValue.serverTimestamp(),
+                        },
                         { merge: true }
                     )
                 }
 
                 const votesIndexRef = db.collection('users').doc(user.uid).collection('votesIndex').doc('index')
+                const interactionRef = db.collection('users').doc(user.uid).collection('interactionIndex').doc('index')
                 if (nextVote === 'up') {
                     tx.set(
                         votesIndexRef,
+                        { up: FieldValue.arrayUnion(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
+                    tx.set(
+                        interactionRef,
                         { up: FieldValue.arrayUnion(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
                         { merge: true }
                     )
@@ -138,9 +168,19 @@ export async function POST(
                         { down: FieldValue.arrayUnion(noteId), up: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
                         { merge: true }
                     )
+                    tx.set(
+                        interactionRef,
+                        { down: FieldValue.arrayUnion(noteId), up: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
                 } else {
                     tx.set(
                         votesIndexRef,
+                        { up: FieldValue.arrayRemove(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+                        { merge: true }
+                    )
+                    tx.set(
+                        interactionRef,
                         { up: FieldValue.arrayRemove(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
                         { merge: true }
                     )

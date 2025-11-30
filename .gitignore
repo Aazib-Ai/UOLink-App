@@ -69,6 +69,7 @@ pnpm-debug.log*
 # Claude AI configuration
 /.claude/
 /.kiro/
+/.agent/
 
 # ===================================================================
 # FIREBASE AND CLOUDFLARE CONFIGURATION FILES

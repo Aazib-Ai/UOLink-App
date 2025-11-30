@@ -7,6 +7,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { NotesContextProvider } from '@/contexts/NotesContextProvider'
 import { SavedNotesContextProvider } from '@/contexts/SavedNotesContextProvider'
+import { UserInteractionsProvider } from '@/contexts/UserInteractionsContext'
 import { DashboardStateProvider } from '@/hooks/useDashboardState'
 import { AuthProvider } from '@/contexts/AuthContext'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
@@ -158,9 +159,10 @@ export default async function RootLayout({
         <PWAProvider>
           <SplashProvider>
             <AuthProvider>
-              <NotesContextProvider>
-                <SavedNotesContextProvider>
-                  <DashboardStateProvider>
+              <UserInteractionsProvider>
+                <NotesContextProvider>
+                  <SavedNotesContextProvider>
+                    <DashboardStateProvider>
                     <SplashScreen />
                     <MainContent>
                       <OfflineBanner />
@@ -170,9 +172,10 @@ export default async function RootLayout({
                       <PWAInstallPrompt />
                       <PWAUpdateNotification />
                     </MainContent>
-                  </DashboardStateProvider>
-                </SavedNotesContextProvider>
-              </NotesContextProvider>
+                    </DashboardStateProvider>
+                  </SavedNotesContextProvider>
+                </NotesContextProvider>
+              </UserInteractionsProvider>
             </AuthProvider>
           </SplashProvider>
         </PWAProvider>

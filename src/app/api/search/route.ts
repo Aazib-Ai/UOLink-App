@@ -8,6 +8,7 @@ import { generateCacheKey, getCache, setCache } from '@/lib/cache/query-cache'
 import { Timestamp } from 'firebase-admin/firestore'
 import { normalizeForStorage } from '@/lib/utils'
 import { SUBJECT_NAMES, TEACHER_NAMES } from '@/constants/universityData'
+import { ensureFilterOptionsCacheWarmingServer } from '@/lib/cache/filter-cache-server'
 
 type SearchResult = {
   results: any[]
@@ -39,6 +40,7 @@ function sanitizeTerm(raw: string | null): string {
 }
 
 export async function GET(request: NextRequest) {
+  ensureFilterOptionsCacheWarmingServer()
   return secureRoute<never>(
     { routeName: 'search.get', requireAuth: false, rateLimitPreset: 'generic' },
     async ({ request }) => {

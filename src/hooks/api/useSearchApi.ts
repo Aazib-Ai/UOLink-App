@@ -1,9 +1,6 @@
 import { useCallback, useState } from 'react';
-import {
-    searchNotes,
-    getNotes,
-    getFilterOptions,
-} from '../../lib/firebase/search';
+import { getNotes } from '../../lib/firebase/search';
+import { searchNotesDeduped, getFilterOptionsDeduped } from '../../lib/firebase/request-deduplication';
 import { NotesQueryResult } from '../../lib/data/types';
 
 export const useSearchApi = () => {
@@ -31,13 +28,13 @@ export const useSearchApi = () => {
         error,
 
         searchNotes: useCallback((searchTerm: string, pageSize?: number, lastDocSnapshot?: any): Promise<NotesQueryResult | null> =>
-            handleAsync(() => searchNotes(searchTerm, pageSize, lastDocSnapshot)), [handleAsync]),
+            handleAsync(() => searchNotesDeduped(searchTerm, pageSize, lastDocSnapshot)), [handleAsync]),
 
         getNotes: useCallback(() =>
             handleAsync(() => getNotes()), [handleAsync]),
 
         getFilterOptions: useCallback(() =>
-            handleAsync(() => getFilterOptions()), [handleAsync]),
+            handleAsync(() => getFilterOptionsDeduped()), [handleAsync]),
 
         clearError: useCallback(() => setError(null), []),
     };

@@ -10,6 +10,7 @@ import { validateRequestJSON } from '@/lib/security/validation'
 import { addReplySchema } from '@/lib/security/validation'
 import { enforceModeration } from '@/lib/security/moderation'
 import { getRequestContext, logSecurityEvent, generateCorrelationId } from '@/lib/security/logging'
+import { cacheQuery, invalidateTags } from '@/lib/cache/query-cache'
 
 interface AddReplyBody {
   text?: string
@@ -88,6 +89,7 @@ export async function POST(
         })
       })
 
+      await invalidateTags([`qc:noteReplies:${noteId}:${commentId}`])
       const { ipAddress, userAgent } = getRequestContext(request)
       await logSecurityEvent({
         type: 'DATA_ACCESS',
@@ -124,64 +126,72 @@ export async function GET(
 
   const url = request.nextUrl
   const limitParam = url.searchParams.get('limit')
-  const limitCount = Math.max(1, Math.min(100, Number(limitParam) || 50))
+  const limitCount = Math.max(1, Math.min(100, Number(limitParam) || 10))
   const cursorCreatedAtParam = url.searchParams.get('cursorCreatedAt')
   const cursorId = url.searchParams.get('cursorId') || undefined
 
   const db = getAdminDb()
 
   try {
-    const commentRef = db.collection('notes').doc(noteId).collection('comments').doc(commentId)
-    const repliesCol = commentRef.collection('replies')
-
-    let q = repliesCol
-      .orderBy('createdAt', 'asc')
-      .orderBy(FieldPath.documentId(), 'asc')
-      .limit(limitCount)
-
-    if (cursorCreatedAtParam && cursorId) {
-      const ms = Number(cursorCreatedAtParam)
-      const ts = Timestamp.fromMillis(isNaN(ms) ? Date.now() : ms)
-      q = repliesCol
-        .orderBy('createdAt', 'asc')
-        .orderBy(FieldPath.documentId(), 'asc')
-        .startAfter(ts, cursorId)
-        .limit(limitCount)
+    const params = {
+      noteId,
+      commentId,
+      limitCount,
+      cursorCreatedAt: cursorCreatedAtParam || undefined,
+      cursorId: cursorId || undefined,
     }
-
-    const snap = await q.get()
-
-    const replies = snap.docs.map((doc) => {
-      const data = doc.data() || {}
-      const createdAt = data.createdAt?.toDate?.() ? data.createdAt.toDate() as Date : new Date()
-      const updatedAt = data.updatedAt?.toDate?.() ? data.updatedAt.toDate() as Date : createdAt
-      return {
-        id: doc.id,
-        text: safeText(String(data.text || ''), { maxLength: 2000 }),
-        userId: String(data.userId || ''),
-        emailPrefix: data.emailPrefix || null,
-        userPhotoURL: data.userPhotoURL || null,
-        userName: data.userName || null,
-        userDisplayName: data.userDisplayName || null,
-        userUsername: data.userUsername || null,
-        likes: Number(data.likes || 0),
-        createdAtMs: createdAt.getTime(),
-        updatedAtMs: updatedAt.getTime(),
-      }
-    })
-
-    const lastDoc = snap.docs[snap.docs.length - 1]
-    const nextCursor = lastDoc
-      ? {
-          cursorCreatedAt: (lastDoc.data()?.createdAt?.toDate?.() ? lastDoc.data().createdAt.toDate() : new Date()).getTime(),
-          cursorId: lastDoc.id,
+    const result = await cacheQuery(
+      'noteReplies',
+      params,
+      async () => {
+        const commentRef = db.collection('notes').doc(noteId).collection('comments').doc(commentId)
+        const repliesCol = commentRef.collection('replies')
+        let q = repliesCol
+          .orderBy('createdAt', 'asc')
+          .orderBy(FieldPath.documentId(), 'asc')
+          .limit(limitCount)
+        if (cursorCreatedAtParam && cursorId) {
+          const ms = Number(cursorCreatedAtParam)
+          const ts = Timestamp.fromMillis(isNaN(ms) ? Date.now() : ms)
+          q = repliesCol
+            .orderBy('createdAt', 'asc')
+            .orderBy(FieldPath.documentId(), 'asc')
+            .startAfter(ts, cursorId)
+            .limit(limitCount)
         }
-      : null
-
-    const hasMore = snap.docs.length === limitCount
-
-    logRequestEnd(ctx, 200, { count: replies.length, hasMore })
-    return ok({ replies, nextCursor, hasMore })
+        const snap = await q.get()
+        const replies = snap.docs.map((doc) => {
+          const data = doc.data() || {}
+          const createdAt = data.createdAt?.toDate?.() ? (data.createdAt.toDate() as Date) : new Date()
+          const updatedAt = data.updatedAt?.toDate?.() ? (data.updatedAt.toDate() as Date) : createdAt
+          return {
+            id: doc.id,
+            text: safeText(String(data.text || ''), { maxLength: 2000 }),
+            userId: String(data.userId || ''),
+            emailPrefix: data.emailPrefix || null,
+            userPhotoURL: data.userPhotoURL || null,
+            userName: data.userName || null,
+            userDisplayName: data.userDisplayName || null,
+            userUsername: data.userUsername || null,
+            likes: Number(data.likes || 0),
+            createdAtMs: createdAt.getTime(),
+            updatedAtMs: updatedAt.getTime(),
+          }
+        })
+        const lastDoc = snap.docs[snap.docs.length - 1]
+        const nextCursor = lastDoc
+          ? {
+              cursorCreatedAt: (lastDoc.data()?.createdAt?.toDate?.() ? lastDoc.data().createdAt.toDate() : new Date()).getTime(),
+              cursorId: lastDoc.id,
+            }
+          : null
+        const hasMore = snap.docs.length === limitCount
+        return { replies, nextCursor, hasMore }
+      },
+      { ttlMs: 5 * 60 * 1000, tags: [`qc:noteReplies:${noteId}:${commentId}`] }
+    )
+    logRequestEnd(ctx, 200, { count: result.replies.length, hasMore: result.hasMore })
+    return ok(result)
   } catch (err: any) {
     logApiError('/api/notes/[id]/comments/[commentId]/replies:GET', err)
     logRequestEnd(ctx, 500)

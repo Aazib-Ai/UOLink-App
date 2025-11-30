@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toggleSaveNote } from '@/lib/api/notes'
 import { auth } from '@/lib/firebase'
-import { fetchSavedNoteIdsEfficient } from '@/lib/firebase/saved-notes-index'
+import { useUserInteractions } from '@/contexts/UserInteractionsContext'
 
 export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: Record<string, any>) => void) => {
+    const interactions = useUserInteractions()
     const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>({})
     const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set())
     const [isInitialLoading, setIsInitialLoading] = useState(true)
 
-    // Fetch saved notes on mount - single read via index doc
+    // Fetch saved notes from interaction context lazily
     useEffect(() => {
         let isMounted = true
 
@@ -19,21 +20,9 @@ export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: R
             }
 
             try {
-                const userId = auth.currentUser.uid
-                let localIds: string[] | null = null
-                if (typeof window !== 'undefined') {
-                    try {
-                        const raw = window.localStorage.getItem(`savedNotes:${userId}`)
-                        const parsed = raw ? JSON.parse(raw) : null
-                        if (Array.isArray(parsed)) {
-                            localIds = parsed as string[]
-                            const localSaved: Record<string, boolean> = {}
-                            for (const id of localIds) localSaved[id] = true
-                            setSavedNotes(localSaved)
-                        }
-                    } catch {}
-                }
-                const ids = await fetchSavedNoteIdsEfficient(userId)
+                await interactions.ensureLoaded()
+                const snap = interactions.getSnapshot()
+                const ids = snap.savedIds
 
                 if (!isMounted) return
 
@@ -43,11 +32,6 @@ export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: R
                 }
 
                 setSavedNotes(saved)
-                if (typeof window !== 'undefined') {
-                    try {
-                        window.localStorage.setItem(`savedNotes:${userId}`, JSON.stringify(ids))
-                    } catch {}
-                }
             } catch (error) {
                 console.error("Error fetching saved notes:", error)
             } finally {
@@ -148,19 +132,7 @@ export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: R
                 return updated
             })
 
-            try {
-                const uid = auth.currentUser?.uid
-                if (uid && typeof window !== 'undefined') {
-                    const raw = window.localStorage.getItem(`savedNotes:${uid}`)
-                    const parsed = raw ? JSON.parse(raw) : null
-                    let ids = Array.isArray(parsed) ? (parsed as string[]) : []
-                    const set = new Set(ids)
-                    if (result.saved) set.add(noteId)
-                    else set.delete(noteId)
-                    ids = Array.from(set)
-                    window.localStorage.setItem(`savedNotes:${uid}`, JSON.stringify(ids))
-                }
-            } catch {}
+            interactions.syncSavedFromServer(noteId, result.saved)
 
         } catch (error: any) {
             console.error("Error saving note:", error)

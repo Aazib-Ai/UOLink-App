@@ -47,22 +47,53 @@ export async function POST(
           tx.delete(userSaveRef)
           auraDelta -= 5
           saved = false
+          const interactionRef = db.collection('users').doc(user.uid).collection('interactionIndex').doc('index')
+          tx.set(
+            interactionRef,
+            { saved: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          )
         } else {
           saveCount = saveCount + 1
           tx.set(userSaveRef, { noteId, savedAt: FieldValue.serverTimestamp() })
           auraDelta += 5
           saved = true
+          const interactionRef = db.collection('users').doc(user.uid).collection('interactionIndex').doc('index')
+          tx.set(
+            interactionRef,
+            { saved: FieldValue.arrayUnion(noteId), updatedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          )
         }
 
         const noteScoreUpdate = buildNoteScoreUpdate(scoreState, { saveCount }, timestamp)
         tx.set(noteRef, noteScoreUpdate, { merge: true })
 
         const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-        if (uploaderId && Number.isFinite(auraDelta) && auraDelta !== 0) {
+        if (uploaderId) {
           const profileRef = db.collection('profiles').doc(uploaderId)
+          const prevCred = Number((noteData as any).credibilityScore || 0)
+          const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
+          const credDelta = nextCred - prevCred
+          const savesDelta = noteScoreUpdate.saveCount - scoreState.saveCount
+
+          const profSnap = await tx.get(profileRef)
+          const pData = profSnap.exists ? (profSnap.data() as any) : {}
+          const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
+          const avg = Number(pData.averageCredibility || 0)
+          const sumPrev = avg * totalNotes
+          const sumNext = sumPrev + credDelta
+          const avgNext = totalNotes > 0 ? sumNext / totalNotes : 0
+
           tx.set(
             profileRef,
-            { aura: FieldValue.increment(auraDelta), auraUpdatedAt: FieldValue.serverTimestamp() },
+            {
+              aura: FieldValue.increment(auraDelta || 0),
+              auraUpdatedAt: FieldValue.serverTimestamp(),
+              totalSaves: FieldValue.increment(savesDelta),
+              averageCredibility: avgNext,
+              lastStatsUpdate: FieldValue.serverTimestamp(),
+            },
             { merge: true }
           )
         }

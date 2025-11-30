@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowBigUp, ArrowBigDown } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useUserInteractions } from '@/contexts/UserInteractionsContext'
 import { db } from '@/lib/firebase'
 import { voteOnNote } from '@/lib/api/notes'
 import { fetchVotesIndexEfficient } from '@/lib/firebase/saved-notes-index'
@@ -79,6 +80,7 @@ export default function VoteButtonOptimized({
   onScoreUpdate,
 }: VoteButtonProps) {
   const { user } = useAuth()
+  const interactions = useUserInteractions()
   const [voteData, setVoteData] = useState<VoteData>({
     upvotes: initialUpvotes,
     downvotes: initialDownvotes,
@@ -108,15 +110,10 @@ export default function VoteButtonOptimized({
           }
         } catch {}
       }
-      const idx = await fetchVotesIndexEfficient(user.uid)
+      await interactions.ensureLoaded()
       if (!mounted) return
-      const uv = idx.up.includes(noteId) ? 'up' : idx.down.includes(noteId) ? 'down' : null
+      const uv = interactions.userVote(noteId)
       setVoteData({ upvotes: initialUpvotes, downvotes: initialDownvotes, userVote: uv })
-      try {
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(`votesIndex:${user.uid}`, JSON.stringify(idx))
-        }
-      } catch {}
     }
     init()
     return () => { mounted = false }
@@ -234,19 +231,7 @@ export default function VoteButtonOptimized({
         downvotes: result.downvotes,
         userVote: result.userVote
       })
-      try {
-        if (user && typeof window !== 'undefined') {
-          const raw = window.localStorage.getItem(`votesIndex:${user.uid}`)
-          const parsed = raw ? JSON.parse(raw) : null
-          let up: string[] = Array.isArray(parsed?.up) ? parsed.up : []
-          let down: string[] = Array.isArray(parsed?.down) ? parsed.down : []
-          up = up.filter((id) => id !== noteId)
-          down = down.filter((id) => id !== noteId)
-          if (result.userVote === 'up') up.push(noteId)
-          else if (result.userVote === 'down') down.push(noteId)
-          window.localStorage.setItem(`votesIndex:${user.uid}`, JSON.stringify({ up, down }))
-        }
-      } catch {}
+      interactions.syncVoteFromServer(noteId, result.userVote)
       
       // Notify parent component
       try {

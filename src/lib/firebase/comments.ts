@@ -112,7 +112,7 @@ export const addComment = async (noteId: string, commentData: any) => {
 
 export const fetchCommentsPage = async (
     noteId: string,
-    pageSize = 15,
+    pageSize = 5,
     cursor?: QueryDocumentSnapshot<DocumentData> | null
 ): Promise<CommentsPageResult> => {
     const commentsCollection = collection(db, 'notes', noteId, 'comments');
@@ -278,7 +278,7 @@ export const addReply = async (noteId: string, commentId: string, replyData: any
     return replyRef;
 };
 
-export const fetchReplies = async (noteId: string, commentId: string, limitCount = 50): Promise<CommentReplyRecord[]> => {
+export const fetchReplies = async (noteId: string, commentId: string, limitCount = 10): Promise<CommentReplyRecord[]> => {
     const repliesCollection = collection(db, 'notes', noteId, 'comments', commentId, 'replies');
     const repliesQuery = query(repliesCollection, orderBy('createdAt', 'asc'), limit(limitCount));
     const snapshot = await getDocs(repliesQuery);

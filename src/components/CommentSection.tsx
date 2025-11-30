@@ -15,7 +15,7 @@ import {
 } from '@/lib/firebase'
 import { getEmailPrefix, computeDisplayName } from '@/lib/security/sanitization'
 
-const COMMENTS_PAGE_SIZE = 15
+const COMMENTS_PAGE_SIZE = 5
 
 interface CommentRecord {
   id: string
@@ -85,6 +85,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const commentsEndRef = useRef<HTMLDivElement>(null)
+  const listContainerRef = useRef<HTMLDivElement>(null)
   const lastVisibleRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null)
 
   const commentCount = comments.length
@@ -121,6 +122,18 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
       setComments(fetched.map(enhanceComment))
       lastVisibleRef.current = lastDoc
       setHasMore(more)
+      const candidates = fetched.filter((c) => c.replyCount > 0).slice(0, 2)
+      for (const c of candidates) {
+        try {
+          const replies = await fetchReplies(noteId, c.id, 10)
+          setCommentState(c.id, (current) => ({
+            ...current,
+            replies,
+            repliesLoaded: true,
+            repliesLoading: false,
+          }))
+        } catch {}
+      }
     } catch (err) {
       console.error(err)
       setError('Failed to load comments. Please try again.')
@@ -283,7 +296,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     if (nextShow && !target.repliesLoaded) {
       setCommentState(commentId, (current) => ({ ...current, repliesLoading: true }))
       try {
-        const replies = await fetchReplies(noteId, commentId)
+        const replies = await fetchReplies(noteId, commentId, 10)
         setCommentState(commentId, (current) => ({
           ...current,
           replies,
@@ -379,7 +392,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     }
   }
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!hasMore || loadingMore) return
 
     setLoadingMore(true)
@@ -408,13 +421,35 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
     } finally {
       setLoadingMore(false)
     }
-  }
+  }, [hasMore, loadingMore, noteId])
 
   const getUserDisplayName = (comment: { userName?: string; emailPrefix?: string }) => {
     if (comment.userName) return comment.userName
     const ep = comment.emailPrefix || 'User'
     return ep.charAt(0).toUpperCase() + ep.slice(1)
   }
+
+  useEffect(() => {
+    const root = listContainerRef.current
+    const target = commentsEndRef.current
+    if (!root || !target || !hasMore) return
+    let cancelled = false
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (cancelled) return
+        const [entry] = entries
+        if (entry && entry.isIntersecting) {
+          handleLoadMore()
+        }
+      },
+      { root, rootMargin: '200px', threshold: 0 }
+    )
+    observer.observe(target)
+    return () => {
+      cancelled = true
+      observer.disconnect()
+    }
+  }, [hasMore, handleLoadMore])
 
   const getUserInitial = (ep: string) => (ep || 'U').charAt(0).toUpperCase()
 
@@ -573,7 +608,7 @@ export default function CommentSection({ noteId, className }: CommentSectionProp
           </form>
         </div>
 
-        <div className="max-h-[22rem] overflow-y-auto pr-1 md:pr-2">
+        <div ref={listContainerRef} className="max-h-[22rem] overflow-y-auto pr-1 md:pr-2">
           {initialLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-amber-100/80 bg-white/70 px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               <span className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500/70 border-t-transparent" />

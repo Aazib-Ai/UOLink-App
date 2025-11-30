@@ -1,13 +1,6 @@
 import { useCallback, useState } from 'react';
-import {
-    getNotes,
-    getNotesWithPagination,
-    getInitialNotes,
-    searchNotes,
-    getFilterOptions,
-    getTotalNotesCount,
-    getAllNotesWithFilters,
-} from '../../lib/firebase/notes';
+import { getNotes, getInitialNotes, getTotalNotesCount, getAllNotesWithFilters } from '../../lib/firebase/notes';
+import { getNotesWithPaginationDeduped, searchNotesDeduped, getFilterOptionsDeduped } from '../../lib/firebase/request-deduplication';
 import { voteOnNote, toggleSaveNote } from '@/lib/api/notes';
 import { parseApiError, userFriendlyMessage } from '@/lib/api/client';
 import { VoteOnNoteResult, ToggleSaveNoteResult, NotesQueryResult } from '../../lib/data/types';
@@ -45,16 +38,16 @@ export const useNotesApi = () => {
             handleAsync(() => getNotes()), [handleAsync]),
 
         getNotesWithPagination: useCallback((pageSize?: number, lastDocSnapshot?: any, filters?: any) =>
-            handleAsync(() => getNotesWithPagination(pageSize, lastDocSnapshot, filters)), [handleAsync]),
+            handleAsync(() => getNotesWithPaginationDeduped(pageSize, lastDocSnapshot, filters)), [handleAsync]),
 
         getInitialNotes: useCallback(() =>
             handleAsync(() => getInitialNotes()), [handleAsync]),
 
         searchNotes: useCallback((searchTerm: string, pageSize?: number, lastDocSnapshot?: any) =>
-            handleAsync(() => searchNotes(searchTerm, pageSize, lastDocSnapshot)), [handleAsync]),
+            handleAsync(() => searchNotesDeduped(searchTerm, pageSize, lastDocSnapshot)), [handleAsync]),
 
         getFilterOptions: useCallback(() =>
-            handleAsync(() => getFilterOptions()), [handleAsync]),
+            handleAsync(() => getFilterOptionsDeduped()), [handleAsync]),
 
         getTotalNotesCount: useCallback(() =>
             handleAsync(() => getTotalNotesCount()), [handleAsync]),

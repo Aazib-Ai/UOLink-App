@@ -9,6 +9,8 @@ import { getR2Client, getR2BucketName } from '@/lib/r2'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { logAuditEvent, logSecurityEvent, startRouteSpan, endRouteSpan, getRequestContext } from '@/lib/security/logging'
 import { enforceNoteSchemaOnWrite } from '@/lib/data/note-schema'
+import { invalidateTags } from '@/lib/cache/query-cache'
+import { normalizeForStorage } from '@/lib/utils'
 
 const sanitizeString = (value: unknown): string => {
     return typeof value === 'string' ? value.trim() : ''
@@ -79,6 +81,10 @@ export async function PATCH(
                 tx.set(noteRef, updateData, { merge: true })
             })
             const { ipAddress, userAgent } = getRequestContext(request)
+            try {
+              const semesterTag = `semester:${normalizeForStorage(sanitizeString(semesterRaw))}`
+              await invalidateTags(['notes', 'initial', semesterTag, 'leaderboard'])
+            } catch {}
             await logAuditEvent({
               action: 'NOTE_UPDATE',
               resource: noteId,
@@ -156,6 +162,9 @@ export async function DELETE(
             }
 
             const { ipAddress, userAgent } = getRequestContext(request)
+            try {
+              await invalidateTags(['notes', 'initial', 'leaderboard'])
+            } catch {}
             await logAuditEvent({
               action: 'NOTE_DELETE',
               resource: noteId,

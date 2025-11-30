@@ -82,9 +82,27 @@ export async function POST(
                 const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
                 if (uploaderId) {
                     const profileRef = db.collection('profiles').doc(uploaderId)
+                    const prevCred = Number((noteData as any).credibilityScore || 0)
+                    const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
+                    const credDelta = nextCred - prevCred
+
+                    const profSnap = await tx.get(profileRef)
+                    const pData = profSnap.exists ? (profSnap.data() as any) : {}
+                    const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
+                    const avg = Number(pData.averageCredibility || 0)
+                    const sumPrev = avg * totalNotes
+                    const sumNext = sumPrev + credDelta
+                    const avgNext = totalNotes > 0 ? sumNext / totalNotes : 0
+
                     tx.set(
                         profileRef,
-                        { aura: FieldValue.increment(-10), auraUpdatedAt: FieldValue.serverTimestamp() },
+                        {
+                            aura: FieldValue.increment(-10),
+                            auraUpdatedAt: FieldValue.serverTimestamp(),
+                            totalReports: FieldValue.increment(1),
+                            averageCredibility: avgNext,
+                            lastStatsUpdate: FieldValue.serverTimestamp(),
+                        },
                         { merge: true }
                     )
                 }
@@ -157,9 +175,27 @@ export async function DELETE(
                 const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
                 if (uploaderId) {
                     const profileRef = db.collection('profiles').doc(uploaderId)
+                    const prevCred = Number((noteData as any).credibilityScore || 0)
+                    const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
+                    const credDelta = nextCred - prevCred
+
+                    const profSnap = await tx.get(profileRef)
+                    const pData = profSnap.exists ? (profSnap.data() as any) : {}
+                    const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
+                    const avg = Number(pData.averageCredibility || 0)
+                    const sumPrev = avg * totalNotes
+                    const sumNext = sumPrev + credDelta
+                    const avgNext = totalNotes > 0 ? sumNext / totalNotes : 0
+
                     tx.set(
                         profileRef,
-                        { aura: FieldValue.increment(10), auraUpdatedAt: FieldValue.serverTimestamp() },
+                        {
+                            aura: FieldValue.increment(10),
+                            auraUpdatedAt: FieldValue.serverTimestamp(),
+                            totalReports: FieldValue.increment(-1),
+                            averageCredibility: avgNext,
+                            lastStatsUpdate: FieldValue.serverTimestamp(),
+                        },
                         { merge: true }
                     )
                 }

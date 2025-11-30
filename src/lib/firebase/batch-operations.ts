@@ -179,7 +179,15 @@ export async function batchFetchProfiles(
     try {
         const profiles: Record<string, any> = {}
 
-        const CHUNK_SIZE = 10
+        const sorted = [...uniqueIds].sort()
+        const cacheKey = `profiles:batch:${sorted.join(',')}`
+
+        if ((requestCache as Map<string, Promise<any>>).has(cacheKey)) {
+            return await (requestCache as Map<string, Promise<any>>).get(cacheKey)!
+        }
+
+        const fetchFn = async () => {
+        const CHUNK_SIZE = 5
         for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
             const chunk = uniqueIds.slice(i, i + CHUNK_SIZE)
             const docs = await Promise.all(
@@ -205,8 +213,15 @@ export async function batchFetchProfiles(
                 }
             })
         }
-
         return profiles
+        }
+
+        const promise = cachedFetch(cacheKey, fetchFn, 300000)
+        ;(requestCache as Map<string, Promise<any>>).set(cacheKey, promise)
+        setTimeout(() => {
+            (requestCache as Map<string, Promise<any>>).delete(cacheKey)
+        }, CACHE_TTL)
+        return await promise
     } catch (error) {
         console.error('Batch fetch profiles error:', error)
         return {}

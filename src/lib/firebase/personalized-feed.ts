@@ -10,6 +10,9 @@ import {
     DocumentData,
 } from 'firebase/firestore';
 import { db, auth } from './app';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './app';
+import { cachedFetch, dataCache } from './batch-operations';
 import { mapNoteSnapshot } from './notes';
 import type { Note, NotesQueryResult } from '../data/note-types';
 import { getUserProfile } from './profiles';
@@ -106,68 +109,109 @@ export const getPersonalizedFeed = async (options: PersonalizedFeedOptions = {})
         }
 
         // Get user profile
-        const userProfile = await getUserProfile(currentUser.uid);
+        const userProfile = await cachedFetch(
+            `profile:${currentUser.uid}`,
+            async () => await getUserProfile(currentUser.uid),
+            30 * 60 * 1000
+        );
         if (!userProfile) {
             throw new Error('User profile not found');
         }
 
-        // Fetch a larger set of notes to score and filter
-        const fetchSize = Math.max(pageSize * 4, 50); // Fetch 4x more to ensure good selection
-        const notesCollection = collection(db, 'notes');
+        const cacheKey = `personalizedFeed:${currentUser.uid}:size:${pageSize}:cursor:${lastDocSnapshot?.id || 'none'}`;
 
-        let constraints: any[] = [orderBy('uploadedAt', 'desc')];
+        return await cachedFetch(cacheKey, async () => {
+            const fetchSize = pageSize * 2;
+            const notesCollection = collection(db, 'notes');
 
-        if (lastDocSnapshot) {
-            constraints.push(startAfter(lastDocSnapshot));
-        }
-        constraints.push(limit(fetchSize));
+            let constraints: any[] = [];
 
-        const q = query(notesCollection, ...constraints);
-        const querySnapshot = await getDocs(q);
-        const allNotes = querySnapshot.docs.map(mapNoteSnapshot);
+            if (userProfile.major) {
+                constraints.push(where('contributorMajor', '==', userProfile.major));
+            }
+            if (userProfile.semester) {
+                constraints.push(where('semester', '==', userProfile.semester));
+            }
+            if (userProfile.section) {
+                constraints.push(where('section', '==', userProfile.section));
+            }
 
-        // Score all notes
-        const scoredNotes: FeedScore[] = allNotes.map(note => {
-            const { score, reasons } = calculateRelevanceScore(note, userProfile);
+            constraints.push(orderBy('uploadedAt', 'desc'));
+
+            if (lastDocSnapshot) {
+                constraints.push(startAfter(lastDocSnapshot));
+            }
+            constraints.push(limit(fetchSize));
+
+            const q = query(notesCollection, ...constraints);
+            const querySnapshot = await getDocs(q);
+            const allNotes = querySnapshot.docs.map(mapNoteSnapshot);
+
+            let relevantNotes: Note[] = [];
+            try {
+                const scoreNotes = httpsCallable(functions, 'scoreNotes');
+                const payload = {
+                    notes: allNotes.map(n => ({
+                        id: n.id,
+                        credibilityScore: n.credibilityScore,
+                        uploadedAt: typeof (n.uploadedAt as any)?.toMillis === 'function' ? (n.uploadedAt as any).toMillis() : (n.uploadedAt instanceof Date ? n.uploadedAt.getTime() : null),
+                        upvoteCount: n.upvoteCount,
+                        saveCount: n.saveCount,
+                        semester: n.semester,
+                        section: n.section,
+                        contributorMajor: n.contributorMajor
+                    })),
+                    userProfile: {
+                        major: userProfile.major || null,
+                        semester: userProfile.semester || null,
+                        section: userProfile.section || null
+                    },
+                    topK: pageSize
+                };
+                const res: any = await scoreNotes(payload);
+                const scoredIds: string[] = Array.isArray(res?.data?.topIds)
+                    ? res.data.topIds
+                    : [];
+                if (scoredIds.length) {
+                    const idToNote = new Map(allNotes.map(n => [n.id, n] as const));
+                    relevantNotes = scoredIds.map(id => idToNote.get(id)).filter(Boolean) as Note[];
+                }
+            } catch (_err) {
+                // Fallback to client-side scoring
+                const scoredNotes: FeedScore[] = allNotes.map(note => {
+                    const { score, reasons } = calculateRelevanceScore(note, userProfile);
+                    return {
+                        note,
+                        relevanceScore: score,
+                        matchReasons: reasons
+                    };
+                });
+                scoredNotes.sort((a, b) => b.relevanceScore - a.relevanceScore);
+                relevantNotes = scoredNotes.slice(0, pageSize).map(s => s.note);
+                if (relevantNotes.length < pageSize && fallbackToGeneral) {
+                    const needed = pageSize - relevantNotes.length;
+                    const remainingNotes = scoredNotes.slice(pageSize);
+                    const fallbackNotes = remainingNotes
+                        .sort((a, b) => {
+                            const aScore = a.note.credibilityScore + (a.matchReasons.includes('Recent upload') ? 50 : 0);
+                            const bScore = b.note.credibilityScore + (b.matchReasons.includes('Recent upload') ? 50 : 0);
+                            return bScore - aScore;
+                        })
+                        .slice(0, needed)
+                        .map(s => s.note);
+                    relevantNotes.push(...fallbackNotes);
+                }
+            }
+
+            const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+            const hasMore = querySnapshot.docs.length === fetchSize;
+
             return {
-                note,
-                relevanceScore: score,
-                matchReasons: reasons
+                notes: relevantNotes,
+                lastDocSnapshot: lastDoc,
+                hasMore
             };
-        });
-
-        // Sort by relevance score
-        scoredNotes.sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-        // Get top relevant notes
-        const relevantNotes = scoredNotes.slice(0, pageSize);
-
-        // If we don't have enough relevant notes and fallback is enabled
-        if (relevantNotes.length < pageSize && fallbackToGeneral) {
-            const needed = pageSize - relevantNotes.length;
-            const remainingNotes = scoredNotes.slice(pageSize);
-
-            // Add more notes sorted by credibility + recency
-            const fallbackNotes = remainingNotes
-                .sort((a, b) => {
-                    const aScore = a.note.credibilityScore + (a.matchReasons.includes('Recent upload') ? 50 : 0);
-                    const bScore = b.note.credibilityScore + (b.matchReasons.includes('Recent upload') ? 50 : 0);
-                    return bScore - aScore;
-                })
-                .slice(0, needed);
-
-            relevantNotes.push(...fallbackNotes);
-        }
-
-        const notes = relevantNotes.map(scored => scored.note);
-        const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
-        const hasMore = querySnapshot.docs.length === fetchSize;
-
-        return {
-            notes,
-            lastDocSnapshot: lastDoc,
-            hasMore
-        };
+        }, 300000); // 5 minutes cache
 
     } catch (error) {
         console.error("Error fetching personalized feed:", error);
@@ -269,4 +313,16 @@ export const getFeedExplanation = async (noteId: string): Promise<{ score: numbe
         console.error("Error getting feed explanation:", error);
         return null;
     }
+};
+
+export const invalidatePersonalizedFeedCacheForUser = (userId: string): void => {
+    const internal = (dataCache as any);
+    const store = internal['cache'];
+    if (!store || typeof store.keys !== 'function') return;
+    const keys = Array.from(store.keys()) as string[];
+    keys.forEach((key) => {
+        if (key.includes(`personalizedFeed:${userId}`) || key.includes(`profile:${userId}`)) {
+            store.delete(key);
+        }
+    });
 };

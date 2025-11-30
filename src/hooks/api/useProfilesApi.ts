@@ -1,8 +1,6 @@
 import { useCallback, useState } from 'react';
-import {
-    getAuraLeaderboard,
-    getUserProfile,
-} from '../../lib/firebase/profiles';
+import { getAuraLeaderboard } from '../../lib/firebase/profiles';
+import { getUserProfileDeduped } from '../../lib/firebase/request-deduplication';
 import { getUserByUsernameOnly } from '../../lib/firebase/profile-resolver';
 import { UserProfile } from '../../lib/data/types';
 
@@ -34,7 +32,7 @@ export const useProfilesApi = () => {
             handleAsync(() => getAuraLeaderboard(limitCount)), [handleAsync]),
 
         getUserProfile: useCallback((userId: string): Promise<UserProfile | null> =>
-            handleAsync(() => getUserProfile(userId)), [handleAsync]),
+            handleAsync(() => getUserProfileDeduped(userId)), [handleAsync]),
 
         getUserProfileByName: useCallback((identifier: string): Promise<UserProfile | null> =>
             handleAsync(() => getUserByUsernameOnly(identifier)), [handleAsync]),

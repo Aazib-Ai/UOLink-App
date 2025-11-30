@@ -16,31 +16,20 @@ import { UserProfile } from '../data/types';
 import { getUserByUsernameOnly } from './profile-resolver';
 import { usernameCache } from '../cache/username-cache';
 import { syncUserProfileReferences } from './profile-sync';
+import { cacheQuery } from '@/lib/cache/query-cache'
 
 export const getAuraLeaderboard = async (limitCount = 20) => {
-    try {
-        const safeLimit = Math.max(limitCount, 1);
-        const profilesCollection = collection(db, 'profiles');
-        const leaderboardQuery = query(
-            profilesCollection,
-            orderBy('aura', 'desc'),
-            limit(safeLimit)
-        );
-        const snapshot = await getDocs(leaderboardQuery);
-
+    const safeLimit = Math.max(limitCount, 1)
+    return await cacheQuery('leaderboard', { limit: safeLimit }, async () => {
+        const profilesCollection = collection(db, 'profiles')
+        const leaderboardQuery = query(profilesCollection, orderBy('aura', 'desc'), limit(safeLimit))
+        const snapshot = await getDocs(leaderboardQuery)
         return snapshot.docs.map((profileDoc) => {
-            const data = profileDoc.data();
-            return {
-                id: profileDoc.id,
-                ...data,
-                aura: toNumber(data.aura),
-            };
-        });
-    } catch (error) {
-        console.error('Error fetching aura leaderboard:', error);
-        throw error;
-    }
-};
+            const data = profileDoc.data()
+            return { id: profileDoc.id, ...data, aura: toNumber(data.aura) }
+        })
+    }, { ttlMs: 5 * 60 * 1000, tags: ['leaderboard'] })
+}
 
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {

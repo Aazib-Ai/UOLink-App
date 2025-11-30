@@ -9,6 +9,7 @@ import { addCommentSchema, validateRequestJSON } from '@/lib/security/validation
 import { enforceModeration } from '@/lib/security/moderation'
 import { getRequestContext, logSecurityEvent, generateCorrelationId } from '@/lib/security/logging'
 import { safeText, getEmailPrefix, computeDisplayName } from '@/lib/security/sanitization'
+import { cacheQuery, invalidateTags } from '@/lib/cache/query-cache'
 
 interface AddCommentBody {
   text?: string
@@ -86,6 +87,7 @@ export async function POST(
         details: { action: 'create_comment', noteId },
       })
 
+      await invalidateTags([`qc:noteComments:${noteId}`])
       logRequestEnd(ctx, 200)
       return ok({ id: ref.id })
     } catch (err: any) {
@@ -109,64 +111,71 @@ export async function GET(
 
   const url = request.nextUrl
   const limitParam = url.searchParams.get('limit')
-  const limitCount = Math.max(1, Math.min(100, Number(limitParam) || 15))
+  const limitCount = Math.max(1, Math.min(100, Number(limitParam) || 5))
   const cursorCreatedAtParam = url.searchParams.get('cursorCreatedAt')
   const cursorId = url.searchParams.get('cursorId') || undefined
 
   const db = getAdminDb()
 
   try {
-    const commentsCol = db.collection('notes').doc(noteId).collection('comments')
-
-    let q = commentsCol
-      .orderBy('createdAt', 'desc')
-      .orderBy(FieldPath.documentId(), 'desc')
-      .limit(limitCount) as FirebaseFirestore.Query
-
-    if (cursorCreatedAtParam && cursorId) {
-      const ms = Number(cursorCreatedAtParam)
-      const ts = Timestamp.fromMillis(isNaN(ms) ? Date.now() : ms)
-      q = commentsCol
-        .orderBy('createdAt', 'desc')
-        .orderBy(FieldPath.documentId(), 'desc')
-        .startAfter(ts, cursorId)
-        .limit(limitCount) as FirebaseFirestore.Query
+    const params = {
+      noteId,
+      limitCount,
+      cursorCreatedAt: cursorCreatedAtParam || undefined,
+      cursorId: cursorId || undefined,
     }
-
-    const snap = await q.get()
-
-    const comments = snap.docs.map((doc) => {
-      const data = doc.data() || {}
-      const createdAt = data.createdAt?.toDate?.() ? data.createdAt.toDate() as Date : new Date()
-      const updatedAt = data.updatedAt?.toDate?.() ? data.updatedAt.toDate() as Date : createdAt
-      return {
-        id: doc.id,
-        text: safeText(String(data.text || ''), { maxLength: 2000 }),
-        userId: String(data.userId || ''),
-        emailPrefix: data.emailPrefix || null,
-        userPhotoURL: data.userPhotoURL || null,
-        userName: data.userName || null,
-        userDisplayName: data.userDisplayName || null,
-        userUsername: data.userUsername || null,
-        likes: Number(data.likes || 0),
-        replyCount: Number(data.replyCount || 0),
-        createdAtMs: createdAt.getTime(),
-        updatedAtMs: updatedAt.getTime(),
-      }
-    })
-
-    const lastDoc = snap.docs[snap.docs.length - 1]
-    const nextCursor = lastDoc
-      ? {
-        cursorCreatedAt: (lastDoc.data()?.createdAt?.toDate?.() ? lastDoc.data().createdAt.toDate() : new Date()).getTime(),
-        cursorId: lastDoc.id,
-      }
-      : null
-
-    const hasMore = snap.docs.length === limitCount
-
-    logRequestEnd(ctx, 200, { count: comments.length, hasMore })
-    return ok({ comments, nextCursor, hasMore })
+    const result = await cacheQuery(
+      'noteComments',
+      params,
+      async () => {
+        const commentsCol = db.collection('notes').doc(noteId).collection('comments')
+        let q = commentsCol
+          .orderBy('createdAt', 'desc')
+          .orderBy(FieldPath.documentId(), 'desc')
+          .limit(limitCount) as FirebaseFirestore.Query
+        if (cursorCreatedAtParam && cursorId) {
+          const ms = Number(cursorCreatedAtParam)
+          const ts = Timestamp.fromMillis(isNaN(ms) ? Date.now() : ms)
+          q = commentsCol
+            .orderBy('createdAt', 'desc')
+            .orderBy(FieldPath.documentId(), 'desc')
+            .startAfter(ts, cursorId)
+            .limit(limitCount) as FirebaseFirestore.Query
+        }
+        const snap = await q.get()
+        const comments = snap.docs.map((doc) => {
+          const data = doc.data() || {}
+          const createdAt = data.createdAt?.toDate?.() ? (data.createdAt.toDate() as Date) : new Date()
+          const updatedAt = data.updatedAt?.toDate?.() ? (data.updatedAt.toDate() as Date) : createdAt
+          return {
+            id: doc.id,
+            text: safeText(String(data.text || ''), { maxLength: 2000 }),
+            userId: String(data.userId || ''),
+            emailPrefix: data.emailPrefix || null,
+            userPhotoURL: data.userPhotoURL || null,
+            userName: data.userName || null,
+            userDisplayName: data.userDisplayName || null,
+            userUsername: data.userUsername || null,
+            likes: Number(data.likes || 0),
+            replyCount: Number(data.replyCount || 0),
+            createdAtMs: createdAt.getTime(),
+            updatedAtMs: updatedAt.getTime(),
+          }
+        })
+        const lastDoc = snap.docs[snap.docs.length - 1]
+        const nextCursor = lastDoc
+          ? {
+            cursorCreatedAt: (lastDoc.data()?.createdAt?.toDate?.() ? lastDoc.data().createdAt.toDate() : new Date()).getTime(),
+            cursorId: lastDoc.id,
+          }
+          : null
+        const hasMore = snap.docs.length === limitCount
+        return { comments, nextCursor, hasMore }
+      },
+      { ttlMs: 5 * 60 * 1000, tags: [`qc:noteComments:${noteId}`] }
+    )
+    logRequestEnd(ctx, 200, { count: result.comments.length, hasMore: result.hasMore })
+    return ok(result)
   } catch (err: any) {
     logApiError('/api/notes/[id]/comments:GET', err)
     logRequestEnd(ctx, 500)

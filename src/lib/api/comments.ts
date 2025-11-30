@@ -72,7 +72,7 @@ export interface CommentsPage {
 
 export async function getCommentsPage(
   noteId: string,
-  limit: number = 15,
+  limit: number = 5,
   cursor?: CommentsPageCursor
 ): Promise<CommentsPage> {
   const params = new URLSearchParams()
@@ -134,7 +134,7 @@ export interface RepliesPage {
 export async function getRepliesPage(
   noteId: string,
   commentId: string,
-  limit: number = 50,
+  limit: number = 10,
   cursor?: RepliesPageCursor
 ): Promise<RepliesPage> {
   const params = new URLSearchParams()

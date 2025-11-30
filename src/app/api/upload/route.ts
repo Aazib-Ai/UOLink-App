@@ -14,7 +14,9 @@ import { validateFileUpload, parseAndValidateUploadFormData, detectUploadDescrip
 import { apiErrorByKey, apiError } from '@/lib/api/errors'
 import { enforceRateLimitOr429, rateLimitKeyByIp, rateLimitKeyByUser, RATE_LIMITS } from '@/lib/security/rateLimit'
 import { logAuditEvent, logSecurityEvent, startRouteSpan, endRouteSpan, getRequestContext } from '@/lib/security/logging'
+import { invalidateFilterOptionsCacheServer, refreshFilterOptionsCacheServer, ensureFilterOptionsCacheWarmingServer } from '@/lib/cache/filter-cache-server'
 import { enforceNoteSchemaOnWrite } from '@/lib/data/note-schema'
+import { invalidateTags } from '@/lib/cache/query-cache'
 import { buildOptimizedObjectKey, getObjectKeyDepth } from '@/lib/r2-shared'
 
 export const runtime = 'nodejs'
@@ -271,12 +273,56 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
 
-    // Denormalize: increment contributor's notesCount on profile
     try {
+      ensureFilterOptionsCacheWarmingServer()
+      await invalidateFilterOptionsCacheServer()
+      await refreshFilterOptionsCacheServer()
+      const majorTag = `major:${normalizeForStorage(meta.contributorMajor || '')}`
+      const semesterTag = `semester:${slugify(meta.semester)}`
+      await invalidateTags(['notes', 'initial', majorTag, semesterTag, 'leaderboard'])
+    } catch {}
+
+    // Denormalize: increment contributor's notes counters on profile and set averageCredibility immediately
+    try {
+      const uploadedNoteRef = db.collection('notes').doc(docRef.id)
+      const uploadedNoteSnap = await uploadedNoteRef.get()
+      const noteData = uploadedNoteSnap.data() || {}
+      const noteCredibility = Number(noteData.credibilityScore || 0)
+
+      const profSnap = await profileRef.get()
+      const pData = profSnap.exists ? (profSnap.data() as any) : {}
+      const currentTotalNotes = Number(pData.totalNotes || pData.notesCount || 0)
+      const currentAvg = Number(pData.averageCredibility || 0)
+      const currentSum = currentAvg * currentTotalNotes
+      const newSum = currentSum + noteCredibility
+      const newAvg = (currentTotalNotes + 1) > 0 ? newSum / (currentTotalNotes + 1) : 0
+
       await profileRef.set({
+        noteCount: FieldValue.increment(1),
         notesCount: FieldValue.increment(1),
-        aura: FieldValue.increment(10)
+        totalNotes: FieldValue.increment(1),
+        aura: FieldValue.increment(10),
+        averageCredibility: newAvg,
+        lastStatsUpdate: FieldValue.serverTimestamp()
       }, { merge: true })
+
+      const recentSnap = await db
+        .collection('notes')
+        .where('uploadedBy', '==', decoded.uid)
+        .orderBy('uploadedAt', 'desc')
+        .limit(5)
+        .get()
+      const topNotes = recentSnap.docs.map((d) => {
+        const nd = d.data() as any
+        return {
+          id: d.id,
+          name: String(nd.name || ''),
+          subject: typeof nd.subject === 'string' ? nd.subject : undefined,
+          uploadedAt: nd.uploadedAt,
+          fileUrl: typeof nd.fileUrl === 'string' ? nd.fileUrl : undefined,
+        }
+      })
+      await profileRef.set({ topNotes }, { merge: true })
     } catch (incErr) {
       if (VERBOSE_LOGS) {
         console.warn('[api/upload] Failed to increment notesCount for profile', incErr)
@@ -404,18 +450,46 @@ export async function DELETE(request: NextRequest) {
 
     await noteRef.delete()
 
-    // Denormalize: decrement contributor's notesCount on profile
+    // Denormalize: decrement contributor's notes counters on profile
     try {
       const uploaderId = uploadedBy
       if (uploaderId) {
         const dbAdmin = getAdminDb()
         const contributorProfileRef = dbAdmin.collection('profiles').doc(uploaderId)
-        await contributorProfileRef.set({ notesCount: FieldValue.increment(-1) }, { merge: true })
+        await contributorProfileRef.set({
+          noteCount: FieldValue.increment(-1),
+          notesCount: FieldValue.increment(-1),
+          totalNotes: FieldValue.increment(-1),
+          lastStatsUpdate: FieldValue.serverTimestamp()
+        }, { merge: true })
+
+        const recentSnap = await dbAdmin
+          .collection('notes')
+          .where('uploadedBy', '==', uploaderId)
+          .orderBy('uploadedAt', 'desc')
+          .limit(5)
+          .get()
+        const topNotes = recentSnap.docs.map((d) => {
+          const nd = d.data() as any
+          return {
+            id: d.id,
+            name: String(nd.name || ''),
+            subject: typeof nd.subject === 'string' ? nd.subject : undefined,
+            uploadedAt: nd.uploadedAt,
+            fileUrl: typeof nd.fileUrl === 'string' ? nd.fileUrl : undefined,
+          }
+        })
+        await contributorProfileRef.set({ topNotes }, { merge: true })
       }
     } catch (decErr) {
       console.warn('[api/upload] Failed to decrement notesCount for profile', decErr)
     }
 
+    try {
+      const majorTag = `major:${normalizeForStorage(typeof data.contributorMajor === 'string' ? data.contributorMajor : '')}`
+      const semesterTag = `semester:${slugify(typeof data.semester === 'string' ? data.semester : String(data.semester || ''))}`
+      await invalidateTags(['notes', 'initial', majorTag, semesterTag, 'leaderboard'])
+    } catch {}
     const { ipAddress, userAgent } = getRequestContext(request)
     await logAuditEvent({
       action: 'NOTE_DELETE',

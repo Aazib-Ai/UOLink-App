@@ -38,7 +38,22 @@ export interface UserProfile {
     profilePictureStorageKey?: string | null;
     profileCompleted?: boolean;
     aura?: number;
-    notesCount?: number;                  // Denormalized count of notes contributed
+    noteCount?: number;                   // Denormalized count (alias for notesCount)
+    notesCount?: number;                  // Denormalized count of notes contributed (legacy)
+    totalNotes?: number;                  // Denormalized count of notes contributed
+    totalUpvotes?: number;               // Denormalized total upvotes across all notes
+    totalSaves?: number;                 // Denormalized total saves across all notes
+    totalDownvotes?: number;             // Denormalized total downvotes across all notes
+    totalReports?: number;               // Denormalized total reports across all notes
+    averageCredibility?: number;         // Rolling average credibility across notes
+    lastStatsUpdate?: any;               // Timestamp of last stats update
+    topNotes?: Array<{                   // Denormalized last 5 notes preview
+        id: string;
+        name: string;
+        subject?: string;
+        uploadedAt?: any;
+        fileUrl?: string;
+    }>;
     [key: string]: unknown;
 }
 

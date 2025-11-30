@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, BookOpen } from 'lucide-react'
 import Navbar from './Navbar'
-import { getUserByUsernameOnly, getNotesForProfile } from '@/lib/firebase'
+import { getNotesForProfile } from '@/lib/firebase'
+import { ProfileCacheProvider, useProfileByUsername } from '@/context/ProfileCacheContext'
 import { getAuraTier } from '@/lib/aura'
 import { ProfileData, NoteData } from './profile/types'
 import {
@@ -23,6 +24,14 @@ import { ProfileLoading, ProfileError } from './profile/ProfileStates'
 import '@/styles/skeletons.css'
 
 export default function PublicProfile() {
+    return (
+        <ProfileCacheProvider>
+            <PublicProfileContent />
+        </ProfileCacheProvider>
+    )
+}
+
+function PublicProfileContent() {
     const { userName } = useParams()
     const router = useRouter()
     const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -112,74 +121,64 @@ export default function PublicProfile() {
         setDisplayedCount(5)
     }, [searchTerm, selectedSubject])
 
-    useEffect(() => {
-        const fetchProfileData = async () => {
-            if (!userName || Array.isArray(userName)) {
-                return
-            }
-
-            try {
-                setLoading(true)
-                setError(null)
-                setUserNotes([])
-
-                const decodedUserName = decodeURIComponent(userName)
-                const profileData = await getUserByUsernameOnly(decodedUserName)
-                if (!profileData) {
-                    setError('Profile not found')
-                    return
-                }
-
-                const displayName =
-                    (typeof profileData.displayName === 'string' && profileData.displayName) ||
-                    (typeof profileData.fullName === 'string' && profileData.fullName) ||
-                    (typeof profileData.username === 'string' && profileData.username) ||
-                    decodedUserName
-                const normalizedProfile: ProfileData = {
-                    id: profileData.id,
-                    fullName: String(displayName),
-                    displayName: typeof displayName === 'string' ? displayName : undefined,
-                    emailPrefix: typeof profileData.emailPrefix === 'string' ? profileData.emailPrefix : undefined,
-                    initials: typeof profileData.initials === 'string' ? profileData.initials : undefined,
-                    username: typeof profileData.username === 'string' ? profileData.username : undefined,
-                    major: typeof profileData.major === 'string' ? profileData.major : '',
-                    semester: typeof profileData.semester === 'string' ? profileData.semester : profileData.semester ? String(profileData.semester) : '',
-                    section: typeof profileData.section === 'string' ? profileData.section : '',
-                    bio: typeof profileData.bio === 'string' ? profileData.bio : '',
-                    about: typeof profileData.about === 'string' ? profileData.about : '',
-                    skills: Array.isArray(profileData.skills) ? profileData.skills.filter((s): s is string => typeof s === 'string') : [],
-                    githubUrl: typeof profileData.githubUrl === 'string' ? profileData.githubUrl : '',
-                    linkedinUrl: typeof profileData.linkedinUrl === 'string' ? profileData.linkedinUrl : '',
-                    instagramUrl: typeof profileData.instagramUrl === 'string' ? profileData.instagramUrl : '',
-                    facebookUrl: typeof profileData.facebookUrl === 'string' ? profileData.facebookUrl : '',
-                    profilePicture: typeof profileData.profilePicture === 'string' ? profileData.profilePicture : null,
-                    profileCompleted: Boolean(profileData.profileCompleted),
-                    aura: typeof profileData.aura === 'number' ? profileData.aura : undefined,
-                    notesCount: typeof profileData.notesCount === 'number' ? profileData.notesCount : undefined,
-                    createdAt: profileData.createdAt,
-                    updatedAt: profileData.updatedAt,
-                }
-
-                setProfile(normalizedProfile)
-
-                const notesResult = await getNotesForProfile({
-                    uploadedBy: profileData.id,
-                    pageSize: 10,
-                })
-
-                setUserNotes(notesResult.notes)
-                setLastDoc(notesResult.lastDocSnapshot)
-                setServerHasMore(notesResult.hasMore)
-            } catch (err: any) {
-                console.error('Error fetching profile:', err)
-                setError(err.message || 'Failed to load profile')
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        fetchProfileData()
+    const decodedUserName = useMemo(() => {
+        if (!userName || Array.isArray(userName)) return ''
+        return decodeURIComponent(userName)
     }, [userName])
+    const { profile: cachedProfile, reload } = useProfileByUsername(decodedUserName)
+
+    useEffect(() => {
+        if (!decodedUserName) return
+        setLoading(true)
+        setError(null)
+        setUserNotes([])
+        void reload()
+    }, [decodedUserName, reload])
+
+    useEffect(() => {
+        const profileData: any = cachedProfile
+        if (!profileData) return
+        const displayName =
+            (typeof profileData.displayName === 'string' && profileData.displayName) ||
+            (typeof profileData.fullName === 'string' && profileData.fullName) ||
+            (typeof profileData.username === 'string' && profileData.username) ||
+            decodedUserName
+        const normalizedProfile: ProfileData = {
+            id: profileData.id,
+            fullName: String(displayName),
+            displayName: typeof displayName === 'string' ? displayName : undefined,
+            emailPrefix: typeof profileData.emailPrefix === 'string' ? profileData.emailPrefix : undefined,
+            initials: typeof profileData.initials === 'string' ? profileData.initials : undefined,
+            username: typeof profileData.username === 'string' ? profileData.username : undefined,
+            major: typeof profileData.major === 'string' ? profileData.major : '',
+            semester: typeof profileData.semester === 'string' ? profileData.semester : profileData.semester ? String(profileData.semester) : '',
+            section: typeof profileData.section === 'string' ? profileData.section : '',
+            bio: typeof profileData.bio === 'string' ? profileData.bio : '',
+            about: typeof profileData.about === 'string' ? profileData.about : '',
+            skills: Array.isArray(profileData.skills) ? profileData.skills.filter((s: unknown): s is string => typeof s === 'string') : [],
+            githubUrl: typeof profileData.githubUrl === 'string' ? profileData.githubUrl : '',
+            linkedinUrl: typeof profileData.linkedinUrl === 'string' ? profileData.linkedinUrl : '',
+            instagramUrl: typeof profileData.instagramUrl === 'string' ? profileData.instagramUrl : '',
+            facebookUrl: typeof profileData.facebookUrl === 'string' ? profileData.facebookUrl : '',
+            profilePicture: typeof profileData.profilePicture === 'string' ? profileData.profilePicture : null,
+            profileCompleted: Boolean(profileData.profileCompleted),
+            aura: typeof profileData.aura === 'number' ? profileData.aura : undefined,
+            notesCount: typeof profileData.notesCount === 'number' ? profileData.notesCount : undefined,
+            createdAt: profileData.createdAt,
+            updatedAt: profileData.updatedAt,
+        }
+        setProfile(normalizedProfile)
+        void (async () => {
+            const notesResult = await getNotesForProfile({
+                uploadedBy: profileData.id,
+                pageSize: 10,
+            })
+            setUserNotes(notesResult.notes)
+            setLastDoc(notesResult.lastDocSnapshot)
+            setServerHasMore(notesResult.hasMore)
+            setLoading(false)
+        })()
+    }, [cachedProfile, decodedUserName])
 
     const handleViewNote = (note: NoteData) => {
         const contributorDisplayName = note.contributorDisplayName || note.contributorName || ''

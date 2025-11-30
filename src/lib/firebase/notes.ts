@@ -13,6 +13,9 @@ import {
 } from 'firebase/firestore';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { db } from './app';
+import { cachedFetch } from './batch-operations';
+import { cacheQuery, generateCacheKey } from '@/lib/cache/query-cache'
+import { getCachedFilterOptions } from '@/lib/cache/filter-cache'
 import { resolveNoteFileMetadata } from '../data/r2-utils';
 import { normalizeForStorage } from '@/lib/utils';
 import { readNoteScoreState, computeCredibilityScore } from '../data/note-utils';
@@ -103,6 +106,50 @@ export const mapNoteSnapshot = (doc: QueryDocumentSnapshot<DocumentData>): Note 
 };
 
 
+const CACHE_TTL_MS = 5 * 60 * 1000;
+type CacheBucket = Map<string, { expiresAt: number; result: NotesQueryResult }>;
+const SEARCH_CACHE: CacheBucket = new Map();
+const FILTER_SEARCH_CACHE: CacheBucket = new Map();
+let searchFallbackCount = 0;
+let filterFallbackCount = 0;
+const nowMs = () => Date.now();
+const getCachedResult = (bucket: CacheBucket, key: string): NotesQueryResult | null => {
+    const entry = bucket.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= nowMs()) {
+        bucket.delete(key);
+        return null;
+    }
+    return entry.result;
+};
+const setCachedResult = (bucket: CacheBucket, key: string, result: NotesQueryResult) => {
+    bucket.set(key, { expiresAt: nowMs() + CACHE_TTL_MS, result });
+};
+const makeSearchKey = (
+    term: string,
+    pageSize: number,
+    cursor: QueryDocumentSnapshot<DocumentData> | null
+) => `search:${normalizeForStorage(term || '')}|size:${pageSize}|cursor:${cursor?.id || 'none'}`;
+export const invalidateSearchCacheForNote = (note: Note) => {
+    const lower = (s: any) => (s || '').toString().toLowerCase();
+    for (const key of Array.from(SEARCH_CACHE.keys())) {
+        const kTerm = key.split('|')[0].replace('search:', '').toLowerCase();
+        if (!kTerm) continue;
+        if (
+            lower(note.subject).includes(kTerm) ||
+            lower(note.teacher).includes(kTerm) ||
+            lower(note.contributorName).includes(kTerm) ||
+            lower(note.materialType).includes(kTerm) ||
+            lower(note.section).includes(kTerm) ||
+            lower(note.name).includes(kTerm)
+        ) {
+            SEARCH_CACHE.delete(key);
+        }
+    }
+};
+export const clearSearchCache = () => {
+    SEARCH_CACHE.clear();
+};
 export const getNotesWithPagination = async (pageSize = 10, lastDocSnapshot = null, filters: any = {}): Promise<NotesQueryResult> => {
     try {
         const notesCollection = collection(db, 'notes');
@@ -222,7 +269,14 @@ export const getNotesForProfile = async ({
         let querySnapshot: any
         try {
             const profileQuery = query(notesCollection, ...constraints)
-            querySnapshot = await getDocs(profileQuery)
+            const performFetch = async () => await getDocs(profileQuery)
+            const isFirstPage = !lastDocSnapshot
+            if (isFirstPage) {
+                const cacheKey = `profileNotes:${uploadedBy || contributorName}:page=${pageSize}`
+                querySnapshot = await cachedFetch(cacheKey, performFetch, 300000)
+            } else {
+                querySnapshot = await performFetch()
+            }
             const notes = querySnapshot.docs.map(mapNoteSnapshot)
             const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null
             const hasMore = querySnapshot.docs.length === pageSize
@@ -235,12 +289,11 @@ export const getNotesForProfile = async ({
                 const normalizedContributor = normalizeForStorage(contributorName)
                 fallbackConstraints.push(where('contributorName', '==', normalizedContributor))
             }
-            fallbackConstraints.push(limit(Math.max(pageSize, 25)))
+            fallbackConstraints.push(limit(pageSize))
             const fallbackQuery = query(notesCollection, ...fallbackConstraints)
             const fallbackSnap = await getDocs(fallbackQuery)
             let notes = fallbackSnap.docs.map(mapNoteSnapshot)
             notes.sort((a, b) => toMillis(b.uploadedAt) - toMillis(a.uploadedAt))
-            notes = notes.slice(0, pageSize)
             return { notes, lastDocSnapshot: null, hasMore: false }
         }
     } catch (error) {
@@ -265,23 +318,25 @@ export const getAllNotesWithFilters = async (filters: any = {}, searchTerm = '')
             materialSequence: filters.materialSequence ? (filters.materialSequence || '').toString().trim() : '',
         };
 
-        // Heuristic: pick one primary filter to apply server-side to avoid composite index requirements.
-        const primaryFilterOrder = [
-            'subject',
-            'teacher',
-            'contributorName',
-            'section',
-            'materialType',
-            'semester',
-            'materialSequence',
-            'contributorMajor',
-        ] as const;
-
-        const primaryKey = primaryFilterOrder.find((key) => !!normalizedFilters[key]);
-
+        const filterKeys = Object.keys(normalizedFilters) as Array<keyof typeof normalizedFilters>;
+        const filterKeySignature = filterKeys
+            .filter((k) => !!normalizedFilters[k])
+            .sort()
+            .map((k) => `${k}:${normalizedFilters[k]}`)
+            .join('&');
+        const filterCacheKey = `filters:${filterKeySignature}|term:${normalizeForStorage(searchTerm || '')}`;
+        const cached = getCachedResult(FILTER_SEARCH_CACHE, filterCacheKey);
+        if (cached) {
+            return cached;
+        }
         let constraints: any[] = [orderBy('uploadedAt', 'desc')];
-        if (primaryKey) {
-            constraints.push(where(primaryKey, '==', normalizedFilters[primaryKey]));
+        const appliedKeys: string[] = [];
+        for (const k of filterKeys) {
+            const v = normalizedFilters[k];
+            if (v) {
+                constraints.push(where(k, '==', v));
+                appliedKeys.push(k);
+            }
         }
 
         // Cap reads to keep cost bounded even when only searchTerm is present.
@@ -293,10 +348,10 @@ export const getAllNotesWithFilters = async (filters: any = {}, searchTerm = '')
             const q = query(notesCollection, ...constraints);
             querySnapshot = await getDocs(q);
         } catch (err: any) {
-            // Fallback if a composite index is required or other query error occurs
             console.warn('Composite index missing or query failed; using fallback limited scan.', err?.message || err);
             const fallbackQ = query(notesCollection, orderBy('uploadedAt', 'desc'), limit(HARD_LIMIT));
             querySnapshot = await getDocs(fallbackQ);
+            filterFallbackCount += 1;
         }
 
         // Map results and apply any remaining filters client-side to preserve behavior
@@ -304,28 +359,28 @@ export const getAllNotesWithFilters = async (filters: any = {}, searchTerm = '')
 
         const applyEq = (val: any, target: any) => (val ?? '').toString() === (target ?? '').toString();
 
-        if (normalizedFilters.semester && primaryKey !== 'semester') {
+        if (normalizedFilters.semester && !appliedKeys.includes('semester')) {
             notes = notes.filter((note) => applyEq(note.semester, normalizedFilters.semester));
         }
-        if (normalizedFilters.subject && primaryKey !== 'subject') {
+        if (normalizedFilters.subject && !appliedKeys.includes('subject')) {
             notes = notes.filter((note) => normalizeForStorage(note.subject || '') === normalizedFilters.subject);
         }
-        if (normalizedFilters.teacher && primaryKey !== 'teacher') {
+        if (normalizedFilters.teacher && !appliedKeys.includes('teacher')) {
             notes = notes.filter((note) => normalizeForStorage(note.teacher || '') === normalizedFilters.teacher);
         }
-        if (normalizedFilters.contributorName && primaryKey !== 'contributorName') {
+        if (normalizedFilters.contributorName && !appliedKeys.includes('contributorName')) {
             notes = notes.filter((note) => normalizeForStorage(note.contributorName || '') === normalizedFilters.contributorName);
         }
-        if (normalizedFilters.section && primaryKey !== 'section') {
+        if (normalizedFilters.section && !appliedKeys.includes('section')) {
             notes = notes.filter((note) => ((note.section || '').toString().trim().toUpperCase()) === normalizedFilters.section);
         }
-        if (normalizedFilters.contributorMajor && primaryKey !== 'contributorMajor') {
+        if (normalizedFilters.contributorMajor && !appliedKeys.includes('contributorMajor')) {
             notes = notes.filter((note) => normalizeForStorage(note.contributorMajor || '') === normalizedFilters.contributorMajor);
         }
-        if (normalizedFilters.materialType && primaryKey !== 'materialType') {
+        if (normalizedFilters.materialType && !appliedKeys.includes('materialType')) {
             notes = notes.filter((note) => normalizeForStorage(note.materialType || '') === normalizedFilters.materialType);
         }
-        if (normalizedFilters.materialSequence && primaryKey !== 'materialSequence') {
+        if (normalizedFilters.materialSequence && !appliedKeys.includes('materialSequence')) {
             notes = notes.filter((note) => ((note.materialSequence || '').toString().trim()) === normalizedFilters.materialSequence);
         }
 
@@ -339,11 +394,13 @@ export const getAllNotesWithFilters = async (filters: any = {}, searchTerm = '')
             );
         }
 
-        return {
+        const result: NotesQueryResult = {
             notes,
             lastDocSnapshot: null,
-            hasMore: false
+            hasMore: false,
         };
+        setCachedResult(FILTER_SEARCH_CACHE, filterCacheKey, result);
+        return result;
     } catch (error) {
         console.error('Error fetching all filtered notes (server-side): ', error);
         throw error;
@@ -354,8 +411,18 @@ export const getAllNotesWithFilters = async (filters: any = {}, searchTerm = '')
 // These legacy functions have been removed to prevent direct Firestore writes.
 
 export const getInitialNotes = async () => {
-    return await getNotesWithPagination(9, null, {});
+    return await cacheQuery('initial_notes', { limit: 9 }, async () => {
+        return await getNotesWithPagination(9, null, {})
+    }, { ttlMs: 60 * 1000, tags: ['notes', 'initial'] })
 };
+
+export const getRecentNotesByMajorSemester = async (major: string, semester: string, limitCount = 9) => {
+    const filters = { contributorMajor: normalizeForStorage(major || ''), semester: (semester || '').toString().trim() }
+    const pageSize = Math.max(limitCount, 1)
+    return await cacheQuery('recent_notes', { ...filters, limit: pageSize }, async () => {
+        return await getNotesWithPagination(pageSize, null, filters)
+    }, { ttlMs: 2 * 60 * 1000, tags: ['notes', `major:${filters.contributorMajor}`, `semester:${filters.semester}`] })
+}
 
 export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnapshot = null): Promise<NotesQueryResult> => {
     try {
@@ -372,6 +439,11 @@ export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnap
         ];
 
         const normalizedTerm = normalizeForStorage(searchTerm || '').trim();
+        const cacheKey = makeSearchKey(normalizedTerm, pageSize, lastDocSnapshot);
+        const cached = getCachedResult(SEARCH_CACHE, cacheKey);
+        if (cached) {
+            return cached;
+        }
         const subjectSet = new Set(SUBJECT_NAMES.map((s) => normalizeForStorage(s)));
         const teacherSet = new Set(TEACHER_NAMES.map((t) => normalizeForStorage(t)));
         const materialTypeSet = new Set(KNOWN_MATERIAL_TYPES.map((m) => normalizeForStorage(m)));
@@ -393,7 +465,15 @@ export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnap
         if (lastDocSnapshot) {
             constraints.push(startAfter(lastDocSnapshot));
         }
-        constraints.push(limit(pageSize * 3));
+        const primaryFilterApplied = constraints.some((c: any) => typeof c?.type === 'string' && c.type === 'where');
+        let multiplier = 1.5;
+        if (primaryFilterApplied) {
+            multiplier = 1.2;
+        } else if (normalizedTerm) {
+            multiplier = normalizedTerm.length >= 5 ? 1.8 : 2.0;
+        }
+        const effectiveLimit = Math.max(pageSize, Math.ceil(pageSize * multiplier));
+        constraints.push(limit(effectiveLimit));
 
         let querySnapshot;
         try {
@@ -406,9 +486,11 @@ export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnap
             if (lastDocSnapshot) {
                 fallbackConstraints.push(startAfter(lastDocSnapshot));
             }
-            fallbackConstraints.push(limit(pageSize * 3));
+            const fallbackLimit = Math.max(pageSize, Math.ceil(pageSize * 2));
+            fallbackConstraints.push(limit(fallbackLimit));
             const q = query(notesCollection, ...fallbackConstraints);
             querySnapshot = await getDocs(q);
+            searchFallbackCount += 1;
         }
 
         let allNotes = querySnapshot.docs.map(mapNoteSnapshot);
@@ -427,13 +509,15 @@ export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnap
 
         const notes = allNotes.slice(0, pageSize);
         const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
-        const hasMore = querySnapshot.docs.length === pageSize * 3;
+        const hasMore = querySnapshot.docs.length === effectiveLimit;
 
-        return {
+        const result: NotesQueryResult = {
             notes,
             lastDocSnapshot: lastDoc,
-            hasMore: hasMore && notes.length === pageSize
+            hasMore: hasMore && notes.length === pageSize,
         };
+        setCachedResult(SEARCH_CACHE, cacheKey, result);
+        return result;
     } catch (error) {
         console.error('Error searching notes: ', error);
         throw error;
@@ -441,81 +525,45 @@ export const searchNotes = async (searchTerm: string, pageSize = 20, lastDocSnap
 };
 
 export const getFilterOptions = async () => {
-    try {
-        const notesCollection = collection(db, 'notes');
-        // Reduce read costs by limiting to the latest 200 docs instead of 1000
-        const q = query(notesCollection, orderBy('uploadedAt', 'desc'), limit(200));
-        const querySnapshot = await getDocs(q);
-
-        const notes = querySnapshot.docs.map(mapNoteSnapshot);
-
-        const semesters = [...new Set(notes.map(note => note.semester).filter(Boolean))];
-
-        // Subjects: merge canonical list with recently observed subjects
-        const subjectSet = new Set<string>(SUBJECT_NAMES.map(s => normalizeForStorage(s)));
-        notes.forEach(note => {
-            if (note.subject) {
-                subjectSet.add(normalizeForStorage(note.subject));
-            }
-        });
-        const subjects = Array.from(subjectSet.values());
-
-        const sortedSubjects = subjects.filter(subject => subject !== 'not mentioned').sort();
-        if (subjects.includes('not mentioned')) {
-            sortedSubjects.push('not mentioned');
-        }
-
-        // Teachers: merge canonical list with recently observed teachers
-        const teacherSet = new Set<string>(TEACHER_NAMES.map(t => normalizeForStorage(t)));
-        notes.forEach(note => {
-            const teacherValue = note.teacher || '';
-            if (teacherValue) {
-                teacherSet.add(normalizeForStorage(teacherValue));
-            }
-        });
-        const teachers = Array.from(teacherSet.values());
-
-        const sections = [...new Set(notes
-            .map(note => (note.section || '').toString().trim().toUpperCase())
-            .filter(Boolean))].sort();
-
-        const materialTypeOrder = [
-            'assignment',
-            'quiz',
-            'lecture',
-            'slides',
-            'midterm-notes',
-            'final-term-notes',
-            'books',
-        ];
-
-        const materialTypeSet = new Set<string>();
-        notes.forEach(note => {
-            if (note.materialType) {
-                materialTypeSet.add(normalizeForStorage(note.materialType));
-            }
-        });
-
-        const orderedMaterialTypes = materialTypeOrder.filter(type => materialTypeSet.has(type));
-        const leftoverMaterialTypes = [...materialTypeSet].filter(type => !materialTypeOrder.includes(type)).sort();
-        const materialTypes = [...orderedMaterialTypes, ...leftoverMaterialTypes];
-
-        const materialSequences = [...new Set(notes
-            .map(note => (note.materialSequence ?? '').toString().trim())
-            .filter(Boolean))].sort((a, b) => Number(a) - Number(b));
-
-        return {
-            semesters: semesters.sort(),
-            subjects: sortedSubjects,
-            teachers: teachers.sort(),
-            sections,
-            materialTypes,
-            materialSequences,
-        };
-    } catch (error) {
-        console.error("Error fetching filter options: ", error);
-        throw error;
+    const fetchFresh = async () => {
+        const notesCollection = collection(db, 'notes')
+        const q = query(notesCollection, orderBy('uploadedAt', 'desc'), limit(200))
+        const querySnapshot = await getDocs(q)
+        const notes = querySnapshot.docs.map(mapNoteSnapshot)
+        const semesters = [...new Set(notes.map(n => n.semester).filter(Boolean))]
+        const subjectSet = new Set<string>(SUBJECT_NAMES.map(s => normalizeForStorage(s)))
+        notes.forEach(n => { if (n.subject) subjectSet.add(normalizeForStorage(n.subject)) })
+        const subjects = Array.from(subjectSet.values())
+        const sortedSubjects = subjects.filter(s => s !== 'not mentioned').sort()
+        if (subjects.includes('not mentioned')) sortedSubjects.push('not mentioned')
+        const teacherSet = new Set<string>(TEACHER_NAMES.map(t => normalizeForStorage(t)))
+        notes.forEach(n => { const v = n.teacher || ''; if (v) teacherSet.add(normalizeForStorage(v)) })
+        const teachers = Array.from(teacherSet.values())
+        const sections = [...new Set(notes.map(n => (n.section || '').toString().trim().toUpperCase()).filter(Boolean))].sort()
+        const materialTypeOrder = ['assignment','quiz','lecture','slides','midterm-notes','final-term-notes','books']
+        const materialTypeSet = new Set<string>()
+        notes.forEach(n => { if (n.materialType) materialTypeSet.add(normalizeForStorage(n.materialType)) })
+        const orderedMaterialTypes = materialTypeOrder.filter(t => materialTypeSet.has(t))
+        const leftoverMaterialTypes = [...materialTypeSet].filter(t => !materialTypeOrder.includes(t)).sort()
+        const materialTypes = [...orderedMaterialTypes, ...leftoverMaterialTypes]
+        const materialSequences = [...new Set(notes.map(n => (n.materialSequence ?? '').toString().trim()).filter(Boolean))].sort((a, b) => Number(a) - Number(b))
+        return { semesters: semesters.sort(), subjects: sortedSubjects, teachers: teachers.sort(), sections, materialTypes, materialSequences }
     }
+    try {
+        return await getCachedFilterOptions(fetchFresh)
+    } catch (error) {
+        console.error('Error fetching filter options: ', error)
+        throw error
+    }
+};
+
+export const getQueryOptimizationMetrics = () => {
+    return {
+        searchFallbackCount,
+        filterFallbackCount,
+        searchCacheSize: SEARCH_CACHE.size,
+        filterCacheSize: FILTER_SEARCH_CACHE.size,
+    };
 };
 
 export const getTotalNotesCount = async () => {
