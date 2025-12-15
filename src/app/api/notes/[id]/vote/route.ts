@@ -5,7 +5,6 @@ import { apiErrorByKey } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { FieldValue } from 'firebase-admin/firestore'
 import { readNoteScoreState, buildNoteScoreUpdate } from '@/lib/data/note-utils'
-import { enforceRateLimitOr429, rateLimitKeyByUser } from '@/lib/security/rateLimit'
 
 interface VoteBody { type?: 'up' | 'down' }
 
@@ -19,9 +18,6 @@ export async function POST(
             return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing note id')
         }
 
-        // Per-user like/vote rate limit: 20/min (client-side has 1s cooldown for UX)
-        const rl = await enforceRateLimitOr429(request, 'like', rateLimitKeyByUser(user.uid, 'like'), user.email || undefined)
-        if (!rl.allowed) return rl.response
 
         let body: VoteBody
         try {
@@ -188,9 +184,6 @@ export async function POST(
             })
 
             const resp = ok(result)
-            resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
-            resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
-            resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
             return resp
         } catch (err: any) {
             console.error('[Vote API] Transaction error:', err?.message || err, { noteId, userId: user.uid })
