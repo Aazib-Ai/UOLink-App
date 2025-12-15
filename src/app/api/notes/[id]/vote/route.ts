@@ -5,7 +5,7 @@ import { apiErrorByKey } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { FieldValue } from 'firebase-admin/firestore'
 import { readNoteScoreState, buildNoteScoreUpdate } from '@/lib/data/note-utils'
-import { enforceRateLimitOr429, rateLimitKeyByUser, enforceCooldownOr429 } from '@/lib/security/rateLimit'
+import { enforceRateLimitOr429, rateLimitKeyByUser } from '@/lib/security/rateLimit'
 
 interface VoteBody { type?: 'up' | 'down' }
 
@@ -19,11 +19,7 @@ export async function POST(
             return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing note id')
         }
 
-        // 500ms cooldown to prevent rapid API spam (client-side has 1s cooldown)
-        const cd = await enforceCooldownOr429(request, `noteVote:${user.uid}:${noteId}`, 500)
-        if (!cd.allowed) return cd.response
-
-        // Per-user like/vote rate limit: 20/min
+        // Per-user like/vote rate limit: 20/min (client-side has 1s cooldown for UX)
         const rl = await enforceRateLimitOr429(request, 'like', rateLimitKeyByUser(user.uid, 'like'), user.email || undefined)
         if (!rl.allowed) return rl.response
 
