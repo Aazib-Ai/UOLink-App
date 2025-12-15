@@ -19,8 +19,8 @@ export async function POST(
             return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing note id')
         }
 
-        // 2s cooldown to debounce rapid toggles
-        const cd = await enforceCooldownOr429(request, `noteVote:${user.uid}:${noteId}`, 2000)
+        // 500ms cooldown to prevent rapid API spam (client-side has 1s cooldown)
+        const cd = await enforceCooldownOr429(request, `noteVote:${user.uid}:${noteId}`, 500)
         if (!cd.allowed) return cd.response
 
         // Per-user like/vote rate limit: 20/min
@@ -201,7 +201,7 @@ export async function POST(
             if (err?.message === 'NOT_FOUND') {
                 return apiErrorByKey(404, 'NOT_FOUND', 'Note not found')
             }
-            // Return a proper server error with the actual error message for debugging
+            // Return a more user-friendly error message
             return apiErrorByKey(500, 'VALIDATION_ERROR', err?.message || 'Failed to vote on note')
         }
     })
