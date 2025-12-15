@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { doc, getDoc, collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore'
+import { FirebaseError } from 'firebase/app'
 import { db } from '@/lib/firebase'
 
 export interface AuraStats {
@@ -79,13 +80,27 @@ export const useAuraStats = () => {
         }
 
         // Fetch only last 10 notes for top-note and recent activity
-        const recentQuery = query(
-          collection(db, 'notes'),
-          where('uploadedBy', '==', user.uid),
-          orderBy('uploadedAt', 'desc'),
-          limit(10)
-        )
-        const recentSnap = await getDocs(recentQuery)
+        let recentSnap
+        try {
+          const recentQuery = query(
+            collection(db, 'notes'),
+            where('uploadedBy', '==', user.uid),
+            orderBy('uploadedAt', 'desc'),
+            limit(10)
+          )
+          recentSnap = await getDocs(recentQuery)
+        } catch (recentErr) {
+          if (recentErr instanceof FirebaseError && recentErr.code === 'failed-precondition') {
+            const fallbackQuery = query(
+              collection(db, 'notes'),
+              where('uploadedBy', '==', user.uid),
+              limit(10)
+            )
+            recentSnap = await getDocs(fallbackQuery)
+          } else {
+            throw recentErr
+          }
+        }
         const lastTenDocs = recentSnap.docs
 
         const recentAgg = lastTenDocs.reduce(

@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { buildR2PublicUrlFromBase } from '@/lib/r2-shared'
 import { logSecurityEvent, logR2Operation, generateCorrelationId } from '@/lib/security/logging'
@@ -72,6 +72,27 @@ export const getR2SignedUrl = async (
     : Math.max(60, parseInt(process.env.R2_SIGNED_URL_TTL_SECONDS || '300', 10))
 
   const command = new GetObjectCommand({ Bucket: bucket, Key: objectKey })
+  return await getSignedUrl(client, command, { expiresIn: ttl })
+}
+
+export const getR2PresignedPutUrl = async (
+  objectKey: string,
+  contentType: string,
+  contentLength?: number,
+  expiresSeconds?: number
+): Promise<string> => {
+  const client = getR2Client()
+  const bucket = getR2BucketName()
+  const ttl = typeof expiresSeconds === 'number'
+    ? Math.max(60, expiresSeconds)
+    : Math.max(60, parseInt(process.env.R2_SIGNED_URL_TTL_SECONDS || '300', 10))
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: objectKey,
+    ContentType: contentType,
+    ContentLength: contentLength,
+  })
   return await getSignedUrl(client, command, { expiresIn: ttl })
 }
 

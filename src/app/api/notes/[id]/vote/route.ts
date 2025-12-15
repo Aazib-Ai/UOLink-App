@@ -61,6 +61,11 @@ export async function POST(
                 const noteData = noteSnap.data() || {}
                 const scoreState = readNoteScoreState(noteData)
 
+                // Read profile early to comply with Firestore transaction rules (all reads before writes)
+                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
+                const profileRef = uploaderId ? db.collection('profiles').doc(uploaderId) : null
+                const profSnap = profileRef ? await tx.get(profileRef) : null
+
                 let upvotes = Math.max(0, (noteVoteSnap.data()?.upvotes as number) || 0)
                 let downvotes = Math.max(0, (noteVoteSnap.data()?.downvotes as number) || 0)
                 const storedVote = (userVoteSnap.exists ? userVoteSnap.data()?.voteType : null) as ('up' | 'down' | null)
@@ -115,10 +120,8 @@ export async function POST(
 
                 tx.set(noteRef, noteScoreUpdate, { merge: true })
 
-                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-                if (uploaderId) {
-                    const profileRef = db.collection('profiles').doc(uploaderId)
-
+                // Update profile stats using pre-read data (profSnap was read earlier to comply with transaction rules)
+                if (uploaderId && profileRef && profSnap) {
                     // Compute deltas for totals and credibility
                     const upDelta = upvotes - scoreState.upvoteCount
                     const downDelta = downvotes - scoreState.downvoteCount
@@ -126,8 +129,7 @@ export async function POST(
                     const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
                     const credDelta = nextCred - prevCred
 
-                    // Read current stats to update average credibility safely
-                    const profSnap = await tx.get(profileRef)
+                    // Use pre-read profile data
                     const pData = profSnap.exists ? (profSnap.data() as any) : {}
                     const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
                     const avg = Number(pData.averageCredibility || 0)
@@ -195,11 +197,12 @@ export async function POST(
             resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
             return resp
         } catch (err: any) {
+            console.error('[Vote API] Transaction error:', err?.message || err, { noteId, userId: user.uid })
             if (err?.message === 'NOT_FOUND') {
                 return apiErrorByKey(404, 'NOT_FOUND', 'Note not found')
             }
+            // Return a proper server error with the actual error message for debugging
             return apiErrorByKey(500, 'VALIDATION_ERROR', err?.message || 'Failed to vote on note')
         }
     })
 }
-

@@ -3,7 +3,7 @@ import { withAuth } from '@/lib/auth/authenticate'
 import { apiErrorByKey } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { getAdminDb } from '@/lib/firebaseAdmin'
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, FieldPath } from 'firebase-admin/firestore'
 import { validateNoteOwnership } from '@/lib/auth/ownership'
 import { getR2Client, getR2BucketName } from '@/lib/r2'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
@@ -148,6 +148,72 @@ export async function DELETE(
                 tx.delete(noteRef)
             })
 
+            try {
+              const noteVotesRef = db.collection('noteVotes').doc(noteId)
+              await noteVotesRef.delete()
+            } catch {}
+
+            try {
+              const savedGroupSnap = await db.collectionGroup('savedNotes').where(FieldPath.documentId(), '==', noteId).get()
+              if (!savedGroupSnap.empty) {
+                const batch = db.batch()
+                const affectedUsers = new Set<string>()
+                savedGroupSnap.docs.forEach((docSnap) => {
+                  batch.delete(docSnap.ref)
+                  const userId = docSnap.ref.parent.parent?.id
+                  if (userId) affectedUsers.add(userId)
+                })
+                await batch.commit()
+                const idxBatch = db.batch()
+                affectedUsers.forEach((uid) => {
+                  const interactionRef = db.collection('users').doc(uid).collection('interactionIndex').doc('index')
+                  idxBatch.set(interactionRef, { saved: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+                  const savedIndexRef = db.collection('users').doc(uid).collection('savedNotesIndex').doc('savedNotesIndex')
+                  idxBatch.set(savedIndexRef, { ids: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+                })
+                await idxBatch.commit()
+              }
+            } catch {}
+
+            try {
+              const votesGroupSnap = await db.collectionGroup('votes').where(FieldPath.documentId(), '==', noteId).get()
+              if (!votesGroupSnap.empty) {
+                const batch = db.batch()
+                const affectedUsers = new Set<string>()
+                votesGroupSnap.docs.forEach((docSnap) => {
+                  batch.delete(docSnap.ref)
+                  const userId = docSnap.ref.parent.parent?.id
+                  if (userId) affectedUsers.add(userId)
+                })
+                await batch.commit()
+                const idxBatch = db.batch()
+                affectedUsers.forEach((uid) => {
+                  const votesIndexRef = db.collection('users').doc(uid).collection('votesIndex').doc('index')
+                  idxBatch.set(votesIndexRef, { up: FieldValue.arrayRemove(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+                  const interactionRef = db.collection('users').doc(uid).collection('interactionIndex').doc('index')
+                  idxBatch.set(interactionRef, { up: FieldValue.arrayRemove(noteId), down: FieldValue.arrayRemove(noteId), updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+                })
+                await idxBatch.commit()
+              }
+            } catch {}
+
+            try {
+              const commentsSnap = await db.collection('notes').doc(noteId).collection('comments').get()
+              if (!commentsSnap.empty) {
+                for (const commentDoc of commentsSnap.docs) {
+                  const repliesSnap = await commentDoc.ref.collection('replies').get()
+                  if (!repliesSnap.empty) {
+                    const repliesBatch = db.batch()
+                    repliesSnap.docs.forEach((r) => repliesBatch.delete(r.ref))
+                    await repliesBatch.commit()
+                  }
+                }
+                const commentsBatch = db.batch()
+                commentsSnap.docs.forEach((c) => commentsBatch.delete(c.ref))
+                await commentsBatch.commit()
+              }
+            } catch {}
+
             // Delete associated R2 file if applicable (outside transaction)
             if (storageKeyToDelete) {
                 try {
@@ -200,4 +266,3 @@ export async function DELETE(
         }
     })
 }
-

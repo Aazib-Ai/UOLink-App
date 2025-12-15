@@ -346,8 +346,8 @@ export default function ContributionList({
     </section>
 
     {pendingDelete && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="dialog" aria-modal="true">
-        <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-lg">
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" role="dialog" aria-modal="true">
+        <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-rose-200 bg-white p-5 sm:p-6 shadow-lg">
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Delete this note?</h3>
             <p className="mt-2 text-sm text-gray-600">This will remove the note from the shared library. This action cannot be undone.</p>
@@ -360,7 +360,7 @@ export default function ContributionList({
             <button
               type="button"
               onClick={() => setPendingDelete(null)}
-              className="inline-flex items-center justify-center rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              className="inline-flex items-center justify-center rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
             >
               Cancel
             </button>
@@ -371,7 +371,7 @@ export default function ContributionList({
                 setPendingDelete(null)
                 onDelete(id)
               }}
-              className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+              className="inline-flex items-center justify-center rounded-full bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700"
             >
               Delete
             </button>

@@ -498,59 +498,72 @@ export function useUploadForm(enableDraftPersistence = false) {
                 return
             }
 
-            const formDataToSubmit = new FormData()
-            formDataToSubmit.append('file', formData.file)
-            formDataToSubmit.append('name', formData.title.trim())
-            formDataToSubmit.append('subject', canonicalSubject)
-            formDataToSubmit.append('teacher', teacherToSubmit)
-            formDataToSubmit.append('semester', normalizedSemester)
-            formDataToSubmit.append('section', normalizedSection)
-            formDataToSubmit.append('materialType', formData.materialType.trim())
-            formDataToSubmit.append('contributorName', profileData.fullName.trim())
-            formDataToSubmit.append('contributorMajor', profileData.major.trim())
-            if (requiresSequence) {
-                const seq = (formData.materialSequence || '').trim()
-                if (seq && SEQUENCE_OPTIONS.includes(seq as any)) {
-                    formDataToSubmit.append('materialSequence', seq)
-                }
-            }
-
-            console.log(`[useUploadForm] Sending request to /api/upload`)
-
-            const response = await fetch('/api/upload', {
+            const presignResponse = await fetch('/api/upload/presign', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
                 },
-                body: formDataToSubmit,
+                body: JSON.stringify({
+                    fileName: formData.file.name,
+                    contentType: formData.file.type,
+                    fileSize: formData.file.size,
+                    name: formData.title.trim(),
+                    subject: canonicalSubject,
+                    teacher: teacherToSubmit,
+                    semester: normalizedSemester,
+                }),
             })
 
-            console.log(`[useUploadForm] Received response: ${response.status} ${response.statusText}`)
-
-            const payload = await response.json()
-
-            if (!response.ok) {
-                // Handle specific error cases
-                if (response.status === 413) {
-                    throw new Error('File is too large. Please upload a file smaller than 25MB.')
-                }
-                if (response.status === 408) {
-                    throw new Error('Upload timeout. Please try uploading a smaller file or check your connection.')
-                }
-                if (response.status === 502 || response.status === 504) {
-                    throw new Error('Server timeout. Please try again with a smaller file.')
-                }
-
-                throw new Error(payload.details || payload.error || 'Upload failed. Please try again.')
+            const presignPayload = await presignResponse.json().catch(() => ({}))
+            if (!presignResponse.ok) {
+                const msg = presignPayload?.error || presignPayload?.details || 'Unable to prepare upload.'
+                throw new Error(msg)
             }
 
-            setStatus({
-                type: 'success',
-                message: 'Upload successful!',
-                details: 'Your material is now available in the library.',
-            })
+            const uploadUrl: string = presignPayload.uploadUrl
+            const storageKey: string = presignPayload.storageKey
 
-            return true // Success
+            const putResp = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': formData.file.type },
+                body: formData.file,
+            })
+            if (!putResp.ok) {
+                const txt = await putResp.text().catch(() => '')
+                throw new Error(txt || 'Failed to upload file to storage.')
+            }
+
+            const completeResponse = await fetch('/api/upload/complete', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    storageKey,
+                    originalFileName: formData.file.name,
+                    contentType: formData.file.type,
+                    fileSize: formData.file.size,
+                    name: formData.title.trim(),
+                    subject: canonicalSubject,
+                    teacher: teacherToSubmit,
+                    semester: normalizedSemester,
+                    section: normalizedSection,
+                    materialType: formData.materialType.trim(),
+                    materialSequence: requiresSequence ? (formData.materialSequence || '').trim() : '',
+                    contributorName: profileData.fullName.trim(),
+                    contributorMajor: profileData.major.trim(),
+                }),
+            })
+            const completePayload = await completeResponse.json().catch(() => ({}))
+            if (!completeResponse.ok) {
+                const msg = completePayload?.error || completePayload?.details || 'Upload failed.'
+                throw new Error(msg)
+            }
+
+            setStatus({ type: 'success', message: 'Upload successful!', details: 'Your material is now available in the library.' })
+            return true
         } catch (uploadError) {
             const message =
                 uploadError instanceof Error
