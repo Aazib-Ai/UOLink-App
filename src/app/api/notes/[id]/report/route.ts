@@ -58,13 +58,18 @@ export async function POST(
                 const timestamp = FieldValue.serverTimestamp() as any
                 const noteData = noteSnap.data() || {}
                 const scoreState = readNoteScoreState(noteData)
+                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
+
+                // Read profile data if uploader exists (MUST happen before any writes)
+                let profSnap: any = null
+                if (uploaderId) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
+                    profSnap = await tx.get(profileRef)
+                }
+
+                // Now we can do all the writes
                 const reportCount = scoreState.reportCount + 1
                 const noteScoreUpdate = buildNoteScoreUpdate(scoreState, { reportCount }, timestamp)
-
-                // Read profile early to comply with Firestore transaction rules (all reads before writes)
-                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-                const profileRef = uploaderId ? db.collection('profiles').doc(uploaderId) : null
-                const profSnap = profileRef ? await tx.get(profileRef) : null
 
                 tx.set(reportRef, {
                     noteId,
@@ -84,12 +89,13 @@ export async function POST(
                     { merge: true }
                 )
 
-                // Update profile stats using pre-read data
-                if (uploaderId && profileRef && profSnap) {
+                if (uploaderId && profSnap) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
                     const prevCred = Number((noteData as any).credibilityScore || 0)
                     const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
                     const credDelta = nextCred - prevCred
 
+                    // Use profile data read earlier
                     const pData = profSnap.exists ? (profSnap.data() as any) : {}
                     const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
                     const avg = Number(pData.averageCredibility || 0)
@@ -168,24 +174,30 @@ export async function DELETE(
                 const timestamp = FieldValue.serverTimestamp() as any
                 const noteData = noteSnap.data() || {}
                 const scoreState = readNoteScoreState(noteData)
+                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
+
+                // Read profile data if uploader exists (MUST happen before any writes)
+                let profSnap: any = null
+                if (uploaderId) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
+                    profSnap = await tx.get(profileRef)
+                }
+
+                // Now we can do all the writes
                 const reportCount = Math.max(0, scoreState.reportCount - 1)
                 const noteScoreUpdate = buildNoteScoreUpdate(scoreState, { reportCount }, timestamp)
-
-                // Read profile early to comply with Firestore transaction rules (all reads before writes)
-                const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-                const profileRef = uploaderId ? db.collection('profiles').doc(uploaderId) : null
-                const profSnap = profileRef ? await tx.get(profileRef) : null
 
                 tx.delete(reportRef)
 
                 tx.set(noteRef, { ...noteScoreUpdate, lastReportedAt: null }, { merge: true })
 
-                // Update profile stats using pre-read data
-                if (uploaderId && profileRef && profSnap) {
+                if (uploaderId && profSnap) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
                     const prevCred = Number((noteData as any).credibilityScore || 0)
                     const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
                     const credDelta = nextCred - prevCred
 
+                    // Use profile data read earlier
                     const pData = profSnap.exists ? (profSnap.data() as any) : {}
                     const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
                     const avg = Number(pData.averageCredibility || 0)

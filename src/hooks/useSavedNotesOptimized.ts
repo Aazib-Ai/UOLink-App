@@ -3,13 +3,37 @@ import { toggleSaveNote } from '@/lib/api/notes'
 import { auth } from '@/lib/firebase'
 import { useUserInteractions } from '@/contexts/UserInteractionsContext'
 
+const SAVED_NOTES_STORAGE_KEY = 'uolink_saved_notes'
+
 export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: Record<string, any>) => void) => {
     const interactions = useUserInteractions()
-    const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>({})
+
+    // Initialize savedNotes from localStorage
+    const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>(() => {
+        if (typeof window === 'undefined') return {}
+        try {
+            const stored = localStorage.getItem(SAVED_NOTES_STORAGE_KEY)
+            return stored ? JSON.parse(stored) : {}
+        } catch (error) {
+            console.error('Error loading saved notes from localStorage:', error)
+            return {}
+        }
+    })
+
     const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set())
     const [isInitialLoading, setIsInitialLoading] = useState(true)
 
-    // Fetch saved notes from interaction context lazily
+    // Sync savedNotes to localStorage whenever it changes
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        try {
+            localStorage.setItem(SAVED_NOTES_STORAGE_KEY, JSON.stringify(savedNotes))
+        } catch (error) {
+            console.error('Error saving notes to localStorage:', error)
+        }
+    }, [savedNotes])
+
+    // Fetch saved notes from interaction context and merge with localStorage
     useEffect(() => {
         let isMounted = true
 
@@ -26,12 +50,16 @@ export const useSavedNotesOptimized = (applyNotePatch: (noteId: string, patch: R
 
                 if (!isMounted) return
 
-                const saved: Record<string, boolean> = {}
+                const serverSaved: Record<string, boolean> = {}
                 for (const id of ids) {
-                    saved[id] = true
+                    serverSaved[id] = true
                 }
 
-                setSavedNotes(saved)
+                // Merge server data with localStorage data
+                setSavedNotes(prev => {
+                    const merged = { ...prev, ...serverSaved }
+                    return merged
+                })
             } catch (error) {
                 console.error("Error fetching saved notes:", error)
             } finally {

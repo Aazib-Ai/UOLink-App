@@ -34,10 +34,23 @@ const RATE_LIMITS: Record<LimitPreset, { windowMs: number; max: number }> = {
 const RL_ENV = getRateLimiterEnv()
 const isProduction = RL_ENV.env === 'production'
 const isRedisAvailable = Boolean(RL_ENV.redisUrl && RL_ENV.redisToken)
-const redis = isRedisAvailable ? new Redis({
-  url: RL_ENV.redisUrl!,
-  token: RL_ENV.redisToken!,
-}) : null
+
+// Initialize Redis client with error handling
+let redis: Redis | null = null
+if (isRedisAvailable) {
+  try {
+    redis = new Redis({
+      url: RL_ENV.redisUrl!,
+      token: RL_ENV.redisToken!,
+    })
+    console.log('[RateLimit] Redis client initialized successfully')
+  } catch (err: any) {
+    console.error('[RateLimit] Failed to initialize Redis client:', err?.message || err)
+    redis = null
+  }
+} else {
+  console.warn('[RateLimit] Redis not available, using memory fallback')
+}
 
 // Simple in-memory fallback for local testing when Redis is not configured
 const memoryCooldown = new Map<string, number>() // key -> expiresAtMs
@@ -58,20 +71,32 @@ export function rateLimitKeyByUser(userId: string, preset: LimitPreset): string 
   return `rl:${preset}:user:${uid}`
 }
 
-export async function checkCooldown(keyBase: string, cooldownMs: number): Promise<{ blocked: boolean; resetTime: number }>
-{
+export async function checkCooldown(keyBase: string, cooldownMs: number): Promise<{ blocked: boolean; resetTime: number }> {
   const key = `cooldown:${keyBase}`
-  if (redis) {
-    // If key exists, cooldown is active
-    const exists = await redis.exists(key)
-    if (exists === 1) {
-      const pttl = await redis.pttl(key)
-      const msLeft = typeof pttl === 'number' && pttl > 0 ? pttl : cooldownMs
-      const resetSeconds = Math.ceil((Date.now() + msLeft) / 1000)
-      return { blocked: true, resetTime: resetSeconds }
+
+  // Validate inputs
+  if (!cooldownMs || cooldownMs <= 0 || !isFinite(cooldownMs)) {
+    console.warn('[RateLimit] Invalid cooldownMs:', cooldownMs, 'using memory fallback')
+    // Fall through to memory fallback
+  } else if (redis) {
+    try {
+      // OPTIMIZED: Single SET NX operation instead of exists + pttl + set
+      // SET with NX returns null if key exists, 'OK' if set successfully
+      const result = await redis.set(key, '1', { px: cooldownMs, nx: true })
+
+      if (result === 'OK') {
+        // Key was set - not blocked, cooldown starts now
+        return { blocked: false, resetTime: Math.ceil((Date.now() + cooldownMs) / 1000) }
+      } else {
+        // Key exists - blocked, get TTL for reset time
+        const pttl = await redis.pttl(key)
+        const msLeft = typeof pttl === 'number' && pttl > 0 ? pttl : cooldownMs
+        return { blocked: true, resetTime: Math.ceil((Date.now() + msLeft) / 1000) }
+      }
+    } catch (err: any) {
+      console.error('[RateLimit] Redis error in checkCooldown:', err?.message || err)
+      // Fall through to memory fallback
     }
-    await redis.set(key, '1', { px: cooldownMs })
-    return { blocked: false, resetTime: Math.ceil((Date.now() + cooldownMs) / 1000) }
   }
   // Fail-closed in production when Redis unavailable
   if (isProduction && RL_ENV.requireRedisInProd) {
@@ -89,50 +114,64 @@ export async function checkCooldown(keyBase: string, cooldownMs: number): Promis
 
 export async function checkRateLimitSlidingWindow(key: string, windowMs: number, max: number): Promise<RateLimitResult> {
   const nowMs = Date.now()
-  const windowStartMs = nowMs - windowMs
-  const zkey = `sw:${key}`
+
+  // Validate inputs to prevent NaN or invalid values from reaching Redis
+  if (!isFinite(nowMs) || nowMs <= 0) {
+    console.error('[RateLimit] Invalid nowMs:', nowMs)
+    return { allowed: false, remaining: 0, resetTime: Math.ceil((Date.now() + windowMs) / 1000), source: 'memory' }
+  }
+
+  if (!windowMs || windowMs <= 0 || !isFinite(windowMs)) {
+    console.error('[RateLimit] Invalid windowMs:', windowMs)
+    return { allowed: false, remaining: 0, resetTime: Math.ceil((Date.now() + 60000) / 1000), source: 'memory' }
+  }
+
+  if (!max || max <= 0 || !isFinite(max)) {
+    console.error('[RateLimit] Invalid max:', max)
+    return { allowed: false, remaining: 0, resetTime: Math.ceil((nowMs + windowMs) / 1000), source: 'memory' }
+  }
+
+  // OPTIMIZED: Fixed window counter instead of sliding window
+  // Uses 2 ops (INCR + EXPIRE) vs 4-5 ops for sliding window
+  const windowId = Math.floor(nowMs / windowMs)
+  const windowKey = `fw:${key}:${windowId}`
+  const ttlSeconds = Math.ceil(windowMs / 1000) + 1
+  const windowEndMs = (windowId + 1) * windowMs
 
   if (redis) {
-    const member = `${nowMs}-${Math.random().toString(36).slice(2, 8)}`
-    await redis.zremrangebyscore(zkey, 0, windowStartMs)
-    await redis.zadd(zkey, { score: nowMs, member })
-    await redis.pexpire(zkey, windowMs + 5_000)
+    try {
+      // Use pipeline to combine INCR + EXPIRE into single round-trip
+      const pipe = redis.pipeline()
+      pipe.incr(windowKey)
+      pipe.expire(windowKey, ttlSeconds)
+      const results = await pipe.exec()
 
-    const count = (await redis.zcard(zkey)) as number
-    const allowed = count <= max
+      const count = (results[0] as number) || 1
+      const allowed = count <= max
+      const remaining = Math.max(0, max - count)
+      const resetTime = Math.ceil(windowEndMs / 1000)
 
-    let remaining = Math.max(0, max - count)
-    let resetTime = Math.ceil((nowMs + windowMs) / 1000)
-    if (!allowed) {
-      const earliest = await redis.zrange(zkey, 0, 0, { withScores: true })
-      const earliestScore = Array.isArray(earliest) && earliest.length >= 2 ? Number(earliest[1] as any) : nowMs
-      const msUntilReset = Math.max(0, earliestScore + windowMs - nowMs)
-      resetTime = Math.ceil((nowMs + msUntilReset) / 1000)
-      remaining = 0
+      return { allowed, remaining, resetTime, source: 'redis' }
+    } catch (err: any) {
+      console.error('[RateLimit] Redis error in checkRateLimitSlidingWindow:', err?.message || err)
+      // Fall through to memory fallback
     }
-
-    return { allowed, remaining, resetTime, source: 'redis' }
   }
 
   // Fail-closed in production when Redis unavailable
   if (isProduction && RL_ENV.requireRedisInProd) {
     return { allowed: false, remaining: 0, resetTime: Math.ceil((nowMs + windowMs) / 1000), source: 'memory' }
   }
-  // Memory fallback
-  const bucket = memoryWindows.get(zkey) || []
-  const recent = bucket.filter(ts => ts > windowStartMs)
-  recent.push(nowMs)
-  memoryWindows.set(zkey, recent)
-  const count = recent.length
-  const allowed = count <= max
-  let remaining = Math.max(0, max - count)
-  let resetTime = Math.ceil((nowMs + windowMs) / 1000)
-  if (!allowed) {
-    const earliestScore = recent[0] || nowMs
-    const msUntilReset = Math.max(0, earliestScore + windowMs - nowMs)
-    resetTime = Math.ceil((nowMs + msUntilReset) / 1000)
-    remaining = 0
-  }
+
+  // Memory fallback - also use fixed window for consistency
+  const memKey = `fw:${key}:${windowId}`
+  const currentCount = (memoryWindows.get(memKey)?.[0] || 0) + 1
+  memoryWindows.set(memKey, [currentCount])
+
+  const allowed = currentCount <= max
+  const remaining = Math.max(0, max - currentCount)
+  const resetTime = Math.ceil(windowEndMs / 1000)
+
   return { allowed, remaining, resetTime, source: 'memory' }
 }
 
@@ -162,8 +201,7 @@ export async function enforceRateLimitOr429(
   preset: LimitPreset,
   key: string,
   userEmail?: string
-): Promise<{ allowed: true; headers: Record<string, string> } | { allowed: false; response: NextResponse }>
-{
+): Promise<{ allowed: true; headers: Record<string, string> } | { allowed: false; response: NextResponse }> {
   // Block bypass header usage in production explicitly
   const bypassHeader = req.headers.get('x-rate-limit-bypass')
   if (isProduction && bypassHeader && RL_ENV.blockBypassHeaderInProd) {
@@ -183,11 +221,13 @@ export async function enforceRateLimitOr429(
 
   if (isBypassAllowed(req)) {
     const reset = Math.ceil((Date.now() + RATE_LIMITS[preset].windowMs) / 1000)
-    return { allowed: true, headers: {
-      'X-RateLimit-Limit': String(RATE_LIMITS[preset].max),
-      'X-RateLimit-Remaining': String(RATE_LIMITS[preset].max),
-      'X-RateLimit-Reset': String(reset),
-    } }
+    return {
+      allowed: true, headers: {
+        'X-RateLimit-Limit': String(RATE_LIMITS[preset].max),
+        'X-RateLimit-Remaining': String(RATE_LIMITS[preset].max),
+        'X-RateLimit-Reset': String(reset),
+      }
+    }
   }
 
   const { windowMs, max } = RATE_LIMITS[preset]
@@ -197,7 +237,7 @@ export async function enforceRateLimitOr429(
   try {
     const { recordPerfMetric } = await import('@/lib/performance/bench')
     await recordPerfMetric('rate_limiter_latency_ms', rlLatencyMs, { preset, key, source: result.source || 'unknown' })
-  } catch {}
+  } catch { }
   if (result.allowed) {
     return {
       allowed: true,
@@ -230,8 +270,7 @@ export async function enforceCooldownOr429(
   req: NextRequest,
   cooldownKeyBase: string,
   cooldownMs: number
-): Promise<{ allowed: true } | { allowed: false; response: NextResponse }>
-{
+): Promise<{ allowed: true } | { allowed: false; response: NextResponse }> {
   const { blocked, resetTime } = await checkCooldown(cooldownKeyBase, cooldownMs)
   if (!blocked) return { allowed: true }
   const resp = NextResponse.json({ error: 'Action on cooldown' }, { status: 429 })

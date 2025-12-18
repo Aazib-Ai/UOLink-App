@@ -48,8 +48,7 @@ export function userFriendlyMessage(code?: string, defaultMessage?: string): str
 }
 
 // Transient HTTP statuses that merit a retry
-// Note: 429 (rate limit) is NOT included - users should wait for cooldown/limit to reset
-const TRANSIENT_STATUSES = new Set([500, 502, 503, 504])
+const TRANSIENT_STATUSES = new Set([500, 502, 503, 504, 429])
 
 export async function fetchWithRetry<T = any>(
     url: string,

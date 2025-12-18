@@ -5,6 +5,7 @@ import { apiErrorByKey } from '@/lib/api/errors'
 import { ok } from '@/lib/api/response'
 import { FieldValue } from 'firebase-admin/firestore'
 import { readNoteScoreState, buildNoteScoreUpdate } from '@/lib/data/note-utils'
+import { enforceRateLimitOr429, rateLimitKeyByUser } from '@/lib/security/rateLimit'
 
 interface VoteBody { type?: 'up' | 'down' }
 
@@ -18,6 +19,9 @@ export async function POST(
             return apiErrorByKey(400, 'VALIDATION_ERROR', 'Missing note id')
         }
 
+        // Per-user like/vote rate limit: 20/min (optimized - single rate limit check)
+        const rl = await enforceRateLimitOr429(request, 'like', rateLimitKeyByUser(user.uid, 'like'), user.email || undefined)
+        if (!rl.allowed) return rl.response
 
         let body: VoteBody
         try {
@@ -44,6 +48,7 @@ export async function POST(
                 const noteVoteRef = db.collection('noteVotes').doc(noteId)
                 const userVoteRef = db.collection('userVotes').doc(user.uid).collection('votes').doc(noteId)
 
+                // Perform ALL reads first (Firestore requirement)
                 const [noteVoteSnap, userVoteSnap] = await Promise.all([
                     tx.get(noteVoteRef),
                     tx.get(userVoteRef),
@@ -52,12 +57,16 @@ export async function POST(
                 const timestamp = FieldValue.serverTimestamp() as any
                 const noteData = noteSnap.data() || {}
                 const scoreState = readNoteScoreState(noteData)
-
-                // Read profile early to comply with Firestore transaction rules (all reads before writes)
                 const uploaderId = typeof noteData.uploadedBy === 'string' ? noteData.uploadedBy : undefined
-                const profileRef = uploaderId ? db.collection('profiles').doc(uploaderId) : null
-                const profSnap = profileRef ? await tx.get(profileRef) : null
 
+                // Read profile data if uploader exists (MUST happen before any writes)
+                let profSnap: any = null
+                if (uploaderId) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
+                    profSnap = await tx.get(profileRef)
+                }
+
+                // Now we can do all the writes
                 let upvotes = Math.max(0, (noteVoteSnap.data()?.upvotes as number) || 0)
                 let downvotes = Math.max(0, (noteVoteSnap.data()?.downvotes as number) || 0)
                 const storedVote = (userVoteSnap.exists ? userVoteSnap.data()?.voteType : null) as ('up' | 'down' | null)
@@ -112,8 +121,9 @@ export async function POST(
 
                 tx.set(noteRef, noteScoreUpdate, { merge: true })
 
-                // Update profile stats using pre-read data (profSnap was read earlier to comply with transaction rules)
-                if (uploaderId && profileRef && profSnap) {
+                if (uploaderId && profSnap) {
+                    const profileRef = db.collection('profiles').doc(uploaderId)
+
                     // Compute deltas for totals and credibility
                     const upDelta = upvotes - scoreState.upvoteCount
                     const downDelta = downvotes - scoreState.downvoteCount
@@ -121,7 +131,7 @@ export async function POST(
                     const nextCred = Number(noteScoreUpdate.credibilityScore || prevCred)
                     const credDelta = nextCred - prevCred
 
-                    // Use pre-read profile data
+                    // Use profile data read earlier
                     const pData = profSnap.exists ? (profSnap.data() as any) : {}
                     const totalNotes = Number(pData.totalNotes || pData.notesCount || 0)
                     const avg = Number(pData.averageCredibility || 0)
@@ -184,14 +194,22 @@ export async function POST(
             })
 
             const resp = ok(result)
+            resp.headers.set('X-RateLimit-Limit', rl.headers['X-RateLimit-Limit'])
+            resp.headers.set('X-RateLimit-Remaining', rl.headers['X-RateLimit-Remaining'])
+            resp.headers.set('X-RateLimit-Reset', rl.headers['X-RateLimit-Reset'])
             return resp
         } catch (err: any) {
-            console.error('[Vote API] Transaction error:', err?.message || err, { noteId, userId: user.uid })
+            console.error('[Vote API] Error details:', {
+                message: err?.message,
+                name: err?.name,
+                stack: err?.stack,
+                fullError: err
+            })
             if (err?.message === 'NOT_FOUND') {
                 return apiErrorByKey(404, 'NOT_FOUND', 'Note not found')
             }
-            // Return a more user-friendly error message
             return apiErrorByKey(500, 'VALIDATION_ERROR', err?.message || 'Failed to vote on note')
         }
     })
 }
+

@@ -89,7 +89,6 @@ export default function VoteButtonOptimized({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingVote, setPendingVote] = useState<'up' | 'down' | null>(null)
-  const [lastVoteTime, setLastVoteTime] = useState<number>(0)
 
   const sizeConfig = SIZE_CONFIGS[size]
 
@@ -109,7 +108,7 @@ export default function VoteButtonOptimized({
             const uv = parsed.up.includes(noteId) ? 'up' : parsed.down.includes(noteId) ? 'down' : null
             setVoteData({ upvotes: initialUpvotes, downvotes: initialDownvotes, userVote: uv })
           }
-        } catch { }
+        } catch {}
       }
       await interactions.ensureLoaded()
       if (!mounted) return
@@ -144,7 +143,7 @@ export default function VoteButtonOptimized({
   const applyOptimisticUpdate = useCallback((voteType: 'up' | 'down') => {
     setVoteData(prev => {
       console.log(`Optimistic update - noteId: ${noteId}, voteType: ${voteType}, prevState:`, prev)
-
+      
       let newUpvotes = prev.upvotes
       let newDownvotes = prev.downvotes
       let newUserVote: 'up' | 'down' | null = voteType
@@ -178,7 +177,7 @@ export default function VoteButtonOptimized({
         downvotes: newDownvotes,
         userVote: newUserVote
       }
-
+      
       console.log(`Optimistic update result - noteId: ${noteId}, newState:`, newState)
       return newState
     })
@@ -191,7 +190,7 @@ export default function VoteButtonOptimized({
 
   const handleVote = useCallback(async (voteType: 'up' | 'down', event?: React.MouseEvent) => {
     console.log(`Vote button clicked - noteId: ${noteId}, voteType: ${voteType}, event:`, event)
-
+    
     // Prevent any default behavior and event bubbling
     if (event) {
       event.preventDefault()
@@ -210,34 +209,22 @@ export default function VoteButtonOptimized({
       return
     }
 
-    // Client-side cooldown check (1 second to prevent accidental double-clicks)
-    const now = Date.now()
-    const timeSinceLastVote = now - lastVoteTime
-    if (timeSinceLastVote < 1000) {
-      const waitTime = Math.ceil((1000 - timeSinceLastVote) / 1000)
-      console.warn(`Vote blocked - client cooldown - noteId: ${noteId}, wait: ${waitTime}s`)
-      setError(`Please wait ${waitTime}s before voting again`)
-      return
-    }
-
     console.log(`Starting vote - noteId: ${noteId}, voteType: ${voteType}, currentVote: ${voteData.userVote}, user: ${user.uid}`)
 
     // Store original state for potential revert
     const originalData = { ...voteData }
-
+    
     // Apply optimistic update immediately
     applyOptimisticUpdate(voteType)
     setPendingVote(voteType)
-    setIsLoading(true)
     setError(null)
-    setLastVoteTime(now)
 
     try {
       // Make the actual API call
       const result = await voteOnNote(noteId, voteType)
-
+      
       console.log(`Vote successful - noteId: ${noteId}, result:`, result)
-
+      
       // Update with server response
       setVoteData({
         upvotes: result.upvotes,
@@ -245,7 +232,7 @@ export default function VoteButtonOptimized({
         userVote: result.userVote
       })
       interactions.syncVoteFromServer(noteId, result.userVote)
-
+      
       // Notify parent component
       try {
         onScoreUpdate?.(result)
@@ -255,44 +242,35 @@ export default function VoteButtonOptimized({
       }
     } catch (err) {
       console.error(`Vote failed - noteId: ${noteId}, error:`, err)
-
+      
       // Revert optimistic update on error
       revertOptimisticUpdate(originalData)
-
-      // Handle specific error types
-      let message = 'Failed to vote. Please try again.'
-      if (err instanceof Error) {
-        // Check if it's a rate limit/cooldown error
-        if (err.message.includes('cooldown') || err.message.includes('rate limit')) {
-          message = 'Please wait a moment before voting again'
-        } else if (err.message.includes('sign in')) {
-          message = 'Please sign in to vote'
-        } else {
-          message = err.message
-        }
-      }
+      
+      const message = err instanceof Error ? err.message : 'Failed to vote. Please try again.'
       setError(message)
     } finally {
       setPendingVote(null)
-      setIsLoading(false)
     }
-  }, [user, isLoading, pendingVote, noteId, voteData.userVote, lastVoteTime, applyOptimisticUpdate, revertOptimisticUpdate, onScoreUpdate, interactions])
+  }, [user, isLoading, pendingVote, noteId, voteData.userVote, applyOptimisticUpdate, revertOptimisticUpdate, onScoreUpdate])
 
   const netVotes = voteData.upvotes - voteData.downvotes
   const isVoting = pendingVote !== null
-
-  const upButtonClasses = `${BUTTON_BASE} ${sizeConfig.buttonPadding} ${voteData.userVote === 'up' ? ACTIVE_UP_CLASSES : INACTIVE_UP_CLASSES
-    } ${isVoting ? 'opacity-70' : 'hover:-translate-y-0.5'} ${pendingVote === 'up' ? 'scale-95' : ''}`
-
-  const downButtonClasses = `${BUTTON_BASE} ${sizeConfig.buttonPadding} ${voteData.userVote === 'down' ? ACTIVE_DOWN_CLASSES : INACTIVE_DOWN_CLASSES
-    } ${isVoting ? 'opacity-70' : 'hover:translate-y-0.5'} ${pendingVote === 'down' ? 'scale-95' : ''}`
-
-  const netCountClasses = `${COUNT_BASE} ${sizeConfig.countPadding} ${sizeConfig.countText} ${netVotes > 0
+  
+  const upButtonClasses = `${BUTTON_BASE} ${sizeConfig.buttonPadding} ${
+    voteData.userVote === 'up' ? ACTIVE_UP_CLASSES : INACTIVE_UP_CLASSES
+  } ${isVoting ? 'opacity-70' : 'hover:-translate-y-0.5'} ${pendingVote === 'up' ? 'scale-95' : ''}`
+  
+  const downButtonClasses = `${BUTTON_BASE} ${sizeConfig.buttonPadding} ${
+    voteData.userVote === 'down' ? ACTIVE_DOWN_CLASSES : INACTIVE_DOWN_CLASSES
+  } ${isVoting ? 'opacity-70' : 'hover:translate-y-0.5'} ${pendingVote === 'down' ? 'scale-95' : ''}`
+  
+  const netCountClasses = `${COUNT_BASE} ${sizeConfig.countPadding} ${sizeConfig.countText} ${
+    netVotes > 0
       ? 'text-[#2a5014] bg-[#f5faeb] border-[#90c639]/30'
       : netVotes < 0
         ? 'text-rose-500 bg-rose-50 border-rose-200/60'
         : 'text-slate-500'
-    }`
+  }`
 
   return (
     <div className={`relative inline-flex ${className}`}>
