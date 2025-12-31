@@ -1,0 +1,451 @@
+/**
+ * CacheManager - Orchestrates memory and IndexedDB caches
+ * Implements Requirements 3.1, 3.2, 3.3, 3.4, 8.1, 8.2
+ * - LRU eviction algorithm for memory management
+ * - Priority-based cache retention logic
+ * - Page type and user content prioritization
+ */
+
+import { MemoryCache } from './memory-cache';
+import { IndexedDBCache } from './indexeddb-wrapper';
+import {
+    CacheEntry,
+    CacheConfig,
+    CacheStats,
+    PageState,
+    DEFAULT_CACHE_CONFIG,
+    approximateSize,
+    isStale,
+} from './types';
+
+/**
+ * Page type enumeration for priority calculation
+ */
+export enum PageType {
+    DASHBOARD = 'dashboard',
+    PROFILE = 'profile',
+    TIMETABLE = 'timetable',
+    SETTINGS = 'settings',
+    PUBLIC_PROFILE = 'public-profile',
+    OTHER = 'other',
+}
+
+/**
+ * Content type for prioritization
+ */
+export enum ContentType {
+    USER_GENERATED = 'user-generated', // User's own content
+    PERSONALIZED = 'personalized',     // Personalized for user
+    GENERIC = 'generic',                // Generic/public content
+}
+
+/**
+ * Extended priority weights including page type and content type
+ */
+export interface ExtendedPriorityWeights {
+    frequency: number;   // 0.3 - How often accessed
+    recency: number;     // 0.2 - How recently accessed
+    pageType: number;    // 0.3 - Type of page
+    contentType: number; // 0.2 - Type of content
+}
+
+/**
+ * Cache entry metadata with page and content type
+ */
+export interface CacheEntryMetadata {
+    pageType: PageType;
+    contentType: ContentType;
+    route: string;
+    pageState?: PageState;
+}
+
+/**
+ * Default extended priority weights
+ */
+const DEFAULT_PRIORITY_WEIGHTS: ExtendedPriorityWeights = {
+    frequency: 0.3,
+    recency: 0.2,
+    pageType: 0.3,
+    contentType: 0.2,
+};
+
+/**
+ * CacheManager coordinates memory and persistent caching with intelligent eviction
+ */
+export class CacheManager {
+    private memoryCache: MemoryCache;
+    private indexedDBCache: IndexedDBCache | null = null;
+    private config: CacheConfig;
+    private priorityWeights: ExtendedPriorityWeights;
+    private recentRoutes: string[] = []; // Track recent navigation for priority
+
+    constructor(config: Partial<CacheConfig> = {}) {
+        this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
+        this.memoryCache = new MemoryCache(this.config);
+        this.priorityWeights = DEFAULT_PRIORITY_WEIGHTS;
+
+        // Initialize IndexedDB if persistence is enabled
+        if (this.config.enablePersistence) {
+            this.indexedDBCache = new IndexedDBCache();
+            this.indexedDBCache.init().catch(err => {
+                console.error('Failed to initialize IndexedDB cache:', err);
+                this.indexedDBCache = null;
+            });
+        }
+    }
+
+    /**
+     * Get cached data with fallback from memory to IndexedDB
+     * Supports Requirement 5.2 - Cache-first data fetching
+     */
+    async get<T>(key: string): Promise<CacheEntry<T> | null> {
+        // Try memory cache first
+        const memoryEntry = this.memoryCache.get<T>(key);
+        if (memoryEntry) {
+            // Recalculate priority with extended weights if metadata includes page/content type
+            if (memoryEntry.metadata.pageType && memoryEntry.metadata.contentType) {
+                memoryEntry.priority = this.calculateExtendedPriority(
+                    memoryEntry.metadata.pageType as PageType,
+                    memoryEntry.metadata.contentType as ContentType,
+                    memoryEntry.metadata.accessCount,
+                    memoryEntry.metadata.lastAccessedAt
+                );
+            }
+            return memoryEntry;
+        }
+
+        // Fallback to IndexedDB
+        if (this.indexedDBCache) {
+            const idbEntry = await this.indexedDBCache.get<T>(key);
+            if (idbEntry) {
+                // Promote to memory cache
+                this.memoryCache.set(key, idbEntry);
+
+                // Recalculate priority if metadata includes page/content type
+                if (idbEntry.metadata.pageType && idbEntry.metadata.contentType) {
+                    idbEntry.priority = this.calculateExtendedPriority(
+                        idbEntry.metadata.pageType as PageType,
+                        idbEntry.metadata.contentType as ContentType,
+                        idbEntry.metadata.accessCount,
+                        idbEntry.metadata.lastAccessedAt
+                    );
+                }
+                return idbEntry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Set cache entry with automatic persistence and priority calculation
+     * Supports Requirements 3.1, 8.1, 8.2 - Memory management and prioritization
+     */
+    async set<T>(
+        key: string,
+        data: T,
+        metadata: CacheEntryMetadata,
+        ttl: number = this.config.defaultTTL
+    ): Promise<void> {
+        const now = Date.now();
+
+        // Calculate priority based on page type, content type, frequency, and recency
+        const priority = this.calculateExtendedPriority(
+            metadata.pageType,
+            metadata.contentType,
+            1, // Initial access count
+            now
+        );
+
+        // Create cache entry
+        const entry: CacheEntry<T> = {
+            data,
+            timestamp: now,
+            expiresAt: now + ttl,
+            priority,
+            sizeBytes: approximateSize(data),
+            tags: this.generateTags(metadata),
+            stale: false,
+            metadata: {
+                createdAt: now,
+                lastAccessedAt: now,
+                accessCount: 1,
+                source: 'network',
+                pageType: metadata.pageType,
+                contentType: metadata.contentType,
+            },
+        };
+
+        // Store in memory cache
+        this.memoryCache.set(key, entry);
+
+        // Store in IndexedDB for persistence
+        if (this.indexedDBCache) {
+            await this.indexedDBCache.set(key, entry);
+        }
+
+        // Track recent routes for priority calculation
+        this.updateRecentRoutes(metadata.route);
+    }
+
+    /**
+     * Invalidate cache entries by key or tags
+     */
+    async invalidate(keyOrTags: string | string[]): Promise<void> {
+        if (typeof keyOrTags === 'string') {
+            // Invalidate single key
+            this.memoryCache.delete(keyOrTags);
+            if (this.indexedDBCache) {
+                await this.indexedDBCache.delete(keyOrTags);
+            }
+        } else {
+            // Invalidate by tags
+            this.memoryCache.invalidateByTags(keyOrTags);
+            if (this.indexedDBCache) {
+                await this.indexedDBCache.invalidateByTags(keyOrTags);
+            }
+        }
+    }
+
+    /**
+     * Cleanup cache with LRU eviction and priority-based retention
+     * Supports Requirements 3.1, 3.2, 3.3, 3.4 - Memory management
+     */
+    async cleanup(memoryPressure: boolean = false): Promise<void> {
+        if (memoryPressure) {
+            // Under memory pressure, reduce to 50% of max
+            const targetBytes = this.config.maxMemoryBytes * 0.5;
+            await this.evictToTarget(targetBytes);
+        } else {
+            // Normal cleanup - use built-in memory cache cleanup
+            this.memoryCache.cleanup();
+        }
+
+        // Cleanup IndexedDB if needed
+        if (this.indexedDBCache) {
+            await this.indexedDBCache.cleanup();
+        }
+
+        // Mark stale entries for background refresh
+        // Supports Requirement 3.3 - Stale cache marking
+        this.markStaleEntries();
+    }
+
+    /**
+     * Mark entries older than staleTTL as stale
+     * Supports Requirement 3.3 - Stale cache marking
+     */
+    markStaleEntries(): string[] {
+        return this.memoryCache.markStaleEntries();
+    }
+
+    /**
+     * Get cache statistics
+     */
+    getStats(): CacheStats {
+        return this.memoryCache.getStats();
+    }
+
+    /**
+     * Clear all caches
+     */
+    async clear(): Promise<void> {
+        this.memoryCache.clear();
+        if (this.indexedDBCache) {
+            await this.indexedDBCache.clear();
+        }
+        this.recentRoutes = [];
+    }
+
+    /**
+     * Calculate extended priority based on page type, content type, frequency, and recency
+     * Supports Requirements 8.1, 8.2, 8.3 - Priority calculation and prioritization
+     */
+    private calculateExtendedPriority(
+        pageType: PageType,
+        contentType: ContentType,
+        accessCount: number,
+        lastAccessedAt: number
+    ): number {
+        const now = Date.now();
+        const ageMs = now - lastAccessedAt;
+        const ageHours = ageMs / (1000 * 60 * 60);
+
+        // Frequency score (logarithmic scale, 0-100)
+        const frequencyScore = Math.min(100, Math.log10(accessCount + 1) * 50);
+
+        // Recency score (exponential decay, 0-100)
+        const recencyScore = Math.max(0, 100 * Math.exp(-ageHours / 24));
+
+        // Page type score (0-100)
+        // Supports Requirement 8.1 - Page type prioritization
+        const pageTypeScore = this.getPageTypeScore(pageType);
+
+        // Content type score (0-100)
+        // Supports Requirement 8.2 - User content prioritization
+        const contentTypeScore = this.getContentTypeScore(contentType);
+
+        // Weighted combination
+        const priority =
+            frequencyScore * this.priorityWeights.frequency +
+            recencyScore * this.priorityWeights.recency +
+            pageTypeScore * this.priorityWeights.pageType +
+            contentTypeScore * this.priorityWeights.contentType;
+
+        return Math.min(100, Math.max(0, priority));
+    }
+
+    /**
+     * Get page type score for priority calculation
+     * Supports Requirement 8.1 - Page type prioritization
+     */
+    private getPageTypeScore(pageType: PageType): number {
+        switch (pageType) {
+            case PageType.DASHBOARD:
+                return 100; // Highest priority
+            case PageType.PROFILE:
+                return 90;
+            case PageType.TIMETABLE:
+                return 70;
+            case PageType.SETTINGS:
+                return 60;
+            case PageType.PUBLIC_PROFILE:
+                return 50;
+            case PageType.OTHER:
+            default:
+                return 30;
+        }
+    }
+
+    /**
+     * Get content type score for priority calculation
+     * Supports Requirement 8.2 - User content prioritization
+     */
+    private getContentTypeScore(contentType: ContentType): number {
+        switch (contentType) {
+            case ContentType.USER_GENERATED:
+                return 100; // Highest priority
+            case ContentType.PERSONALIZED:
+                return 70;
+            case ContentType.GENERIC:
+            default:
+                return 30;
+        }
+    }
+
+    /**
+     * Generate tags for cache entry based on metadata
+     */
+    private generateTags(metadata: CacheEntryMetadata): string[] {
+        const tags: string[] = [];
+
+        tags.push(`page:${metadata.pageType}`);
+        tags.push(`content:${metadata.contentType}`);
+        tags.push(`route:${metadata.route}`);
+
+        return tags;
+    }
+
+    /**
+     * Update recent routes for priority calculation
+     * Supports Requirement 3.4 - Priority-based retention
+     */
+    private updateRecentRoutes(route: string): void {
+        // Remove if already exists
+        this.recentRoutes = this.recentRoutes.filter(r => r !== route);
+
+        // Add to front
+        this.recentRoutes.unshift(route);
+
+        // Keep only last 3 routes (current + 2 recent)
+        if (this.recentRoutes.length > 3) {
+            this.recentRoutes = this.recentRoutes.slice(0, 3);
+        }
+    }
+
+    /**
+     * Check if a route is in recent routes
+     */
+    private isRecentRoute(route: string): boolean {
+        return this.recentRoutes.includes(route);
+    }
+
+    /**
+     * Evict entries to reach target memory size
+     * Supports Requirements 3.2, 3.4 - Memory pressure response and priority retention
+     */
+    private async evictToTarget(targetBytes: number): Promise<void> {
+        const currentSize = this.memoryCache.getSize();
+
+        if (currentSize <= targetBytes) {
+            return;
+        }
+
+        // Get all entries
+        const entries = Array.from(this.memoryCache.getAllEntries().entries());
+
+        // Sort by priority (ascending) and last accessed time (ascending)
+        entries.sort((a, b) => {
+            const [, entryA] = a;
+            const [, entryB] = b;
+
+            // Priority difference
+            const priorityDiff = entryA.priority - entryB.priority;
+            if (priorityDiff !== 0) {
+                return priorityDiff;
+            }
+
+            // If same priority, evict least recently accessed
+            return entryA.metadata.lastAccessedAt - entryB.metadata.lastAccessedAt;
+        });
+
+        // Evict entries until we reach target
+        let bytesToRemove = currentSize - targetBytes;
+        let evictedCount = 0;
+
+        for (const [key, entry] of entries) {
+            if (bytesToRemove <= 0) {
+                break;
+            }
+
+            // Don't evict critical data (priority > 80)
+            // Supports Requirement 3.5 - Critical data preservation
+            if (entry.priority > 80) {
+                continue;
+            }
+
+            // Check if this is a recent route
+            const isRecent = entry.tags.some(tag => {
+                if (tag.startsWith('route:')) {
+                    const route = tag.substring(6);
+                    return this.isRecentRoute(route);
+                }
+                return false;
+            });
+
+            // Don't evict recent routes (current + 2 most recent)
+            // Supports Requirement 3.4 - Priority-based retention
+            if (isRecent && this.recentRoutes.length <= 3) {
+                continue;
+            }
+
+            this.memoryCache.delete(key);
+            bytesToRemove -= entry.sizeBytes;
+            evictedCount++;
+        }
+    }
+
+    /**
+     * Get recent routes (for testing)
+     */
+    getRecentRoutes(): string[] {
+        return [...this.recentRoutes];
+    }
+
+    /**
+     * Update priority weights (for testing and configuration)
+     */
+    updatePriorityWeights(weights: Partial<ExtendedPriorityWeights>): void {
+        this.priorityWeights = { ...this.priorityWeights, ...weights };
+    }
+}

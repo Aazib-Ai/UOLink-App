@@ -14,34 +14,34 @@
   - **Property 20: Transparent fallback on cache miss**
   - **Validates: Requirements 5.3**
 
-- [ ] 2. Implement CacheManager class
+- [x] 2. Implement CacheManager class
   - Create CacheManager with get, set, invalidate, and cleanup methods
   - Implement LRU eviction algorithm for memory management
   - Add cache size calculation and monitoring
   - Implement priority-based cache retention logic
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 8.1, 8.2_
 
-- [ ]* 2.1 Write property test for cache size management
+- [x]* 2.1 Write property test for cache size management
   - **Property 10: Cache size management**
   - **Validates: Requirements 3.1**
 
-- [ ]* 2.2 Write property test for memory pressure response
+- [x]* 2.2 Write property test for memory pressure response
   - **Property 11: Memory pressure response**
   - **Validates: Requirements 3.2**
 
-- [ ]* 2.3 Write property test for stale cache marking
+- [x]* 2.3 Write property test for stale cache marking
   - **Property 12: Stale cache marking**
   - **Validates: Requirements 3.3**
 
-- [ ]* 2.4 Write property test for priority-based retention
+- [x]* 2.4 Write property test for priority-based retention
   - **Property 13: Priority-based cache retention**
   - **Validates: Requirements 3.4**
 
-- [ ]* 2.5 Write property test for page type prioritization
+- [x]* 2.5 Write property test for page type prioritization
   - **Property 30: Page type prioritization**
   - **Validates: Requirements 8.1**
 
-- [ ]* 2.6 Write property test for user content prioritization
+- [x]* 2.6 Write property test for user content prioritization
   - **Property 31: User content prioritization**
   - **Validates: Requirements 8.2**
 

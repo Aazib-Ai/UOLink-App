@@ -15,6 +15,10 @@ export interface CacheMetadata {
   accessCount: number;
   /** Source of the cached data (e.g., 'network', 'indexeddb', 'memory') */
   source: 'network' | 'indexeddb' | 'memory';
+  /** Page type for priority calculation (optional for backward compatibility) */
+  pageType?: string;
+  /** Content type for priority calculation (optional for backward compatibility) */
+  contentType?: string;
 }
 
 /**
@@ -188,17 +192,17 @@ export function calculatePriority(
   const now = Date.now();
   const ageMs = now - lastAccessedAt;
   const ageHours = ageMs / (1000 * 60 * 60);
-  
+
   // Normalize frequency (logarithmic scale)
   const frequencyScore = Math.min(100, Math.log10(accessCount + 1) * 50);
-  
+
   // Normalize recency (exponential decay)
   const recencyScore = Math.max(0, 100 * Math.exp(-ageHours / 24));
-  
+
   // Weighted combination
-  const priority = 
-    frequencyScore * weights.frequency + 
+  const priority =
+    frequencyScore * weights.frequency +
     recencyScore * weights.recency;
-  
+
   return Math.min(100, Math.max(0, priority));
 }
