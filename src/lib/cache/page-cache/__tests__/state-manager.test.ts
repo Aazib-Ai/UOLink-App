@@ -33,7 +33,12 @@ const mockWindow = () => {
         // @ts-ignore
         global.document = {
             querySelector: jest.fn(),
-            querySelectorAll: jest.fn(() => []),
+            querySelectorAll: jest.fn(() => ({
+                length: 0,
+                item: () => null,
+                forEach: () => { },
+                [Symbol.iterator]: function* () { },
+            })),
         };
         // @ts-ignore
         global.requestAnimationFrame = jest.fn(cb => setTimeout(cb, 0));
