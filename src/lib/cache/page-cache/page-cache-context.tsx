@@ -5,8 +5,16 @@ import { CacheManager, CacheEntryMetadata, PageType, ContentType } from './cache
 import { StateManager } from './state-manager';
 import { NavigationGuard } from './navigation-guard';
 import { BackgroundRefreshManager } from './background-refresh-manager';
-import { CacheEntry, DEFAULT_CACHE_CONFIG } from './types';
+import { CacheEntry, DEFAULT_CACHE_CONFIG, PageState } from './types';
 import { usePathname } from 'next/navigation';
+import {
+    createCacheSetMessage,
+    createCacheInvalidateMessage,
+    createCacheWarmMessage,
+    SWMessageType,
+    isSWCacheMessage,
+    SWPageCacheEntry,
+} from './sw-types';
 
 interface PageCacheContextType {
     cacheManager: CacheManager;
@@ -151,15 +159,6 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         return () => clearInterval(interval);
     }, []);
 
-    // Effect to ensure proper initialization completion if async work needed
-    useEffect(() => {
-        setIsInitialized(true);
-        return () => {
-            // Cleanup if needed
-            // refreshManagerRef.current?.stop();
-        };
-    }, []);
-
     const notifySubscribers = useCallback((key: string, data: any) => {
         const keySubscribers = subscribersRef.current.get(key);
         if (keySubscribers) {
@@ -171,6 +170,63 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
                 }
             });
         }
+    }, []);
+
+    // Service worker communication
+    useEffect(() => {
+        if (typeof window === 'undefined' || !navigator.serviceWorker) {
+            return;
+        }
+
+        // Listen for messages from service worker
+        const handleSWMessage = (event: MessageEvent) => {
+            const message = event.data;
+
+            if (!isSWCacheMessage(message)) {
+                return;
+            }
+
+            console.log('Received message from SW:', message.type);
+
+            switch (message.type) {
+                case SWMessageType.CACHE_UPDATED:
+                    // Service worker updated cache, notify subscribers
+                    notifySubscribers(message.key, null);
+                    break;
+
+                case SWMessageType.CACHE_WARM_COMPLETE:
+                    console.log('Cache warming complete:', message);
+                    break;
+
+                case SWMessageType.CACHE_WARM_FAILED:
+                    console.error('Cache warming failed:', message);
+                    break;
+            }
+        };
+
+        navigator.serviceWorker.addEventListener('message', handleSWMessage);
+
+        // Request cache warming on mount
+        navigator.serviceWorker.ready.then(registration => {
+            if (registration.active) {
+                registration.active.postMessage(createCacheWarmMessage(['/dashboard', '/profile', '/timetable']));
+            }
+        }).catch(error => {
+            console.error('Service worker not ready:', error);
+        });
+
+        return () => {
+            navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+        };
+    }, [notifySubscribers]);
+
+    // Effect to ensure proper initialization completion if async work needed
+    useEffect(() => {
+        setIsInitialized(true);
+        return () => {
+            // Cleanup if needed
+            // refreshManagerRef.current?.stop();
+        };
     }, []);
 
     const subscribeToUpdates = useCallback((key: string, callback: (data: any) => void) => {
@@ -212,6 +268,36 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         try {
             await cacheManagerRef.current!.set(key, data, metadata);
             notifySubscribers(key, data);
+
+            // Sync with service worker
+            if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+                const pageState = stateManagerRef.current?.captureState(metadata.route) || {
+                    scrollPosition: { x: 0, y: 0 },
+                    filters: {},
+                    searchTerm: '',
+                    expandedSections: [],
+                    formData: {},
+                    customState: {},
+                };
+
+                const entry = await cacheManagerRef.current!.get<T>(key);
+                if (entry) {
+                    const swCacheEntry: SWPageCacheEntry = {
+                        pageData: data,
+                        pageState,
+                        route: metadata.route,
+                        entry,
+                    };
+
+                    navigator.serviceWorker.ready.then(registration => {
+                        if (registration.active) {
+                            registration.active.postMessage(createCacheSetMessage(key, swCacheEntry));
+                        }
+                    }).catch(error => {
+                        console.error('Failed to sync with service worker:', error);
+                    });
+                }
+            }
         } catch (err) {
             setLastError(err instanceof Error ? err : new Error(String(err)));
         }
@@ -220,8 +306,17 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
     const invalidateCache = useCallback(async (keyOrTags: string | string[]) => {
         try {
             await cacheManagerRef.current!.invalidate(keyOrTags);
-            // For invalidation, we might want to notify subscribers with null or special event
-            // For now, let's just complete silently or maybe trigger a refresh if needed
+
+            // Sync invalidation with service worker
+            if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+                navigator.serviceWorker.ready.then(registration => {
+                    if (registration.active) {
+                        registration.active.postMessage(createCacheInvalidateMessage(keyOrTags));
+                    }
+                }).catch(error => {
+                    console.error('Failed to sync invalidation with service worker:', error);
+                });
+            }
         } catch (err) {
             setLastError(err instanceof Error ? err : new Error(String(err)));
         }
