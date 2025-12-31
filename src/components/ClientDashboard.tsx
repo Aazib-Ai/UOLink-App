@@ -9,6 +9,7 @@ import { useSplash } from "@/contexts/SplashContext"
 import { useDashboardState } from "@/hooks/useDashboardState"
 import { useSavedNotesOptimized } from "@/hooks/useSavedNotesOptimized"
 import { useProfileData } from "@/hooks/useProfileData"
+import { useNavigationState } from "@/lib/cache"
 import { DashboardFilters } from "./dashboard/DashboardFilters"
 import { DashboardSearch } from "./dashboard/DashboardSearch"
 import { DashboardSort } from "./dashboard/DashboardSort"
@@ -46,6 +47,16 @@ export default function ClientDashboard() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [noteToDelete, setNoteToDelete] = useState<{ id: string; title: string; subject: string } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Enable state persistence for filters and search
+  useNavigationState({
+    selectors: {
+      filters: ['#semester-filter', '#subject-filter', '#teacher-filter', '#section-filter', '#major-filter', '#material-type-filter', '#material-sequence-filter'],
+      search: '#dashboard-search',
+    },
+    restoreOnMount: true,
+    captureOnUnmount: true,
+  })
 
   // Mobile detection effect
   useEffect(() => {

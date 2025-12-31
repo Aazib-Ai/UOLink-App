@@ -11,3 +11,9 @@ export { NavigationGuard } from './navigation-guard';
 export type { NavigationResult, BackgroundRefreshCallback, NavigationGuardConfig } from './navigation-guard';
 export { BackgroundRefreshManager } from './background-refresh-manager';
 export type { RefreshCallback, UpdateCallback, BackgroundRefreshConfig } from './background-refresh-manager';
+
+// Context and Hooks
+export { PageCacheProvider, usePageCache } from './page-cache-context';
+export { useCachedPage } from './hooks/use-cached-page';
+export { useNavigationState } from './hooks/use-navigation-state';
+export type { UseNavigationStateOptions } from './hooks/use-navigation-state';

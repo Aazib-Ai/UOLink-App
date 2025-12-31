@@ -5,10 +5,20 @@ import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import Navbar from '../../Navbar'
 import ProfileEditForm from './ProfileEditForm'
+import { PageCacheProvider, useNavigationState } from '@/lib/cache'
 
 export default function ProfileEditPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
+
+  // Enable state persistence for profile edit form (CRITICAL - unsaved user data)
+  useNavigationState({
+    selectors: {
+      forms: '#profile-edit-form',
+    },
+    restoreOnMount: true,
+    captureOnUnmount: true,
+  })
 
   // Redirect if not authenticated
   if (loading) {

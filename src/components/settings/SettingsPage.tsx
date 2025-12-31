@@ -6,11 +6,21 @@ import { useAuth } from '@/contexts/AuthContext'
 import Navbar from '../Navbar'
 import PasswordChangeSection from './PasswordChangeSection'
 import { useProfileEditForm } from '@/hooks/useProfileEditForm'
+import { useNavigationState } from '@/lib/cache'
 
 export default function SettingsPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const { profileData } = useProfileEditForm()
+
+  // Enable state persistence for forms (high priority for unsaved changes)
+  useNavigationState({
+    selectors: {
+      forms: '#password-change-form',
+    },
+    restoreOnMount: true,
+    captureOnUnmount: true,
+  })
 
   // Redirect if not authenticated
   if (loading) {
