@@ -17,6 +17,11 @@ import {
     approximateSize,
     isStale,
 } from './types';
+import {
+    ConfigurationManager,
+    FeatureFlag,
+    MonitoringManager,
+} from './config';
 
 /**
  * Page type enumeration for priority calculation
@@ -79,15 +84,27 @@ export class CacheManager {
     private priorityWeights: ExtendedPriorityWeights;
     private recentRoutes: string[] = []; // Track recent navigation for priority
     private isOfflineMode: boolean = false;
+    private configManager: ConfigurationManager | null = null;
+    private monitoringManager: MonitoringManager | null = null;
 
 
-    constructor(config: Partial<CacheConfig> = {}) {
+    constructor(config: Partial<CacheConfig> = {}, configManager?: ConfigurationManager) {
         this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
         this.memoryCache = new MemoryCache(this.config);
         this.priorityWeights = DEFAULT_PRIORITY_WEIGHTS;
+        this.configManager = configManager || null;
 
-        // Initialize IndexedDB if persistence is enabled
-        if (this.config.enablePersistence) {
+        // Get monitoring manager if config manager is available
+        if (this.configManager) {
+            this.monitoringManager = this.configManager.getMonitoringManager();
+        }
+
+        // Initialize IndexedDB if persistence is enabled (check feature flag if available)
+        const persistenceEnabled = this.configManager
+            ? this.configManager.isFeatureEnabledSync(FeatureFlag.INDEXEDDB_PERSISTENCE)
+            : this.config.enablePersistence;
+
+        if (persistenceEnabled) {
             this.indexedDBCache = new IndexedDBCache();
             this.indexedDBCache.init().catch(err => {
                 console.error('Failed to initialize IndexedDB cache:', err);
@@ -205,13 +222,20 @@ export class CacheManager {
     ): Promise<void> {
         const now = Date.now();
 
+        // Check if advanced priority calculation is enabled
+        const useAdvancedPriority = this.configManager
+            ? this.configManager.isFeatureEnabledSync(FeatureFlag.ADVANCED_PRIORITY)
+            : true;
+
         // Calculate priority based on page type, content type, frequency, and recency
-        const priority = this.calculateExtendedPriority(
-            metadata.pageType,
-            metadata.contentType,
-            1, // Initial access count
-            now
-        );
+        const priority = useAdvancedPriority
+            ? this.calculateExtendedPriority(
+                metadata.pageType,
+                metadata.contentType,
+                1, // Initial access count
+                now
+            )
+            : 50; // Default priority if feature is disabled
 
         // Create cache entry
         const entry: CacheEntry<T> = {
@@ -235,13 +259,24 @@ export class CacheManager {
         // Store in memory cache
         this.memoryCache.set(key, entry);
 
-        // Store in IndexedDB for persistence
-        if (this.indexedDBCache) {
+        // Store in IndexedDB for persistence (if feature enabled)
+        const persistenceEnabled = this.configManager
+            ? this.configManager.isFeatureEnabledSync(FeatureFlag.INDEXEDDB_PERSISTENCE)
+            : true;
+
+        if (this.indexedDBCache && persistenceEnabled) {
             await this.indexedDBCache.set(key, entry);
         }
 
         // Track recent routes for priority calculation
         this.updateRecentRoutes(metadata.route);
+
+        // Report metrics to monitoring manager
+        if (this.monitoringManager) {
+            const stats = this.getStats();
+            const quotaInfo = await this.checkStorageQuota();
+            this.monitoringManager.recordMetric(stats, quotaInfo || undefined);
+        }
     }
 
     /**
@@ -308,7 +343,30 @@ export class CacheManager {
      * Get cache statistics
      */
     getStats(): CacheStats {
-        return this.memoryCache.getStats();
+        const stats = this.memoryCache.getStats();
+
+        // Report to monitoring manager if available
+        if (this.monitoringManager) {
+            // Don't call recordMetric here to avoid recursion from set() method
+            // Stats are already recorded in set() method
+        }
+
+        return stats;
+    }
+
+    /**
+     * Set configuration manager
+     */
+    setConfigurationManager(manager: ConfigurationManager): void {
+        this.configManager = manager;
+        this.monitoringManager = manager.getMonitoringManager();
+
+        // Listen to configuration changes
+        manager.addListener((event) => {
+            // Update config when it changes
+            this.config = { ...this.config, ...event.newConfig };
+            this.memoryCache.updateConfig(this.config);
+        });
     }
 
     /**
@@ -520,6 +578,15 @@ export class CacheManager {
      * Supports Requirement 8.4 - Adaptive priority based on usage patterns
      */
     private adaptPriorityWeights(): void {
+        // Check if adaptive caching is enabled
+        const adaptiveEnabled = this.configManager
+            ? this.configManager.isFeatureEnabledSync(FeatureFlag.ADAPTIVE_CACHING)
+            : true;
+
+        if (!adaptiveEnabled) {
+            return;
+        }
+
         const stats = this.memoryCache.getStats();
 
         // If hit rate is low, increase frequency weight to favor stable, popular items

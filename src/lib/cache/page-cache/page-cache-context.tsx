@@ -15,12 +15,18 @@ import {
     isSWCacheMessage,
     SWPageCacheEntry,
 } from './sw-types';
+import {
+    ConfigurationManager,
+    initializeConfiguration,
+    getConfigurationManager,
+} from './config';
 
 interface PageCacheContextType {
     cacheManager: CacheManager;
     stateManager: StateManager;
     navigationGuard: NavigationGuard;
     refreshManager: BackgroundRefreshManager;
+    configManager: ConfigurationManager;
 
     // Helper accessors
     getCacheEntry: <T>(key: string) => Promise<CacheEntry<T> | null>;
@@ -61,6 +67,7 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
     const stateManagerRef = useRef<StateManager | null>(null);
     const navigationGuardRef = useRef<NavigationGuard | null>(null);
     const refreshManagerRef = useRef<BackgroundRefreshManager | null>(null);
+    const configManagerRef = useRef<ConfigurationManager | null>(null);
 
     // Notification subscribers: Map<key, Set<callback>>
     const subscribersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
@@ -76,17 +83,17 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
     // Initialize managers on first mount
     if (!cacheManagerRef.current) {
         try {
-            cacheManagerRef.current = new CacheManager(config);
+            // Initialize configuration system first
+            configManagerRef.current = getConfigurationManager();
+
+            // Initialize cache manager with configuration
+            cacheManagerRef.current = new CacheManager(config, configManagerRef.current);
             stateManagerRef.current = new StateManager();
 
             refreshManagerRef.current = new BackgroundRefreshManager(
                 cacheManagerRef.current,
                 stateManagerRef.current
             );
-
-            // TODO: Hook up global refresh notifications if needed, likely via
-            // modifying BackgroundRefreshManager to emit events or similar,
-            // or by wrapping scheduleRefresh. For now, we instantiate it correctly.
 
             navigationGuardRef.current = new NavigationGuard(
                 cacheManagerRef.current,
@@ -220,6 +227,49 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         };
     }, [notifySubscribers]);
 
+    // Initialize configuration system async
+    useEffect(() => {
+        const initConfig = async () => {
+            if (configManagerRef.current) {
+                try {
+                    await configManagerRef.current.initialize();
+
+                    // Start monitoring
+                    const monitoringManager = configManagerRef.current.getMonitoringManager();
+                    monitoringManager.startMonitoring(60000); // Every minute
+
+                    // Listen for rollback events
+                    monitoringManager.addEventListener((event) => {
+                        if (event.type === 'rollback') {
+                            console.warn('Cache system rollback triggered:', event.data);
+
+                            // Handle rollback action
+                            const action = event.data.action;
+                            if (action === 'clear_cache' && cacheManagerRef.current) {
+                                cacheManagerRef.current.clear().catch(console.error);
+                            }
+                        }
+                    });
+
+                    setIsInitialized(true);
+                } catch (error) {
+                    console.error('Failed to initialize configuration:', error);
+                    setLastError(error instanceof Error ? error : new Error(String(error)));
+                }
+            }
+        };
+
+        initConfig();
+
+        return () => {
+            // Stop monitoring on cleanup
+            if (configManagerRef.current) {
+                const monitoringManager = configManagerRef.current.getMonitoringManager();
+                monitoringManager.stopMonitoring();
+            }
+        };
+    }, []);
+
     // Effect to ensure proper initialization completion if async work needed
     useEffect(() => {
         setIsInitialized(true);
@@ -327,7 +377,7 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
     }, []);
 
     // Safe guard access in value
-    if (!cacheManagerRef.current || !stateManagerRef.current || !navigationGuardRef.current || !refreshManagerRef.current) {
+    if (!cacheManagerRef.current || !stateManagerRef.current || !navigationGuardRef.current || !refreshManagerRef.current || !configManagerRef.current) {
         return null; // Or some loading state/error boundary
     }
 
@@ -336,6 +386,7 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         stateManager: stateManagerRef.current,
         navigationGuard: navigationGuardRef.current,
         refreshManager: refreshManagerRef.current,
+        configManager: configManagerRef.current,
         getCacheEntry,
         getCacheEntrySync,
         setCacheEntry,
