@@ -7,7 +7,7 @@ import { useTimetableData, TimetableEntry } from '@/hooks/useTimetableData'
 import { useAuth } from '@/contexts/AuthContext'
 import { getUserPrefs, setUserPrefs, getGuestPrefs, setGuestPrefs, mapMajorToDepartment, inferSubDepartment } from '@/lib/preferences/timetable'
 import { getProfileAcademic } from '@/lib/firebase/profile-lite'
-import { useNavigationState } from '@/lib/cache'
+import { useNavigationState } from '@/lib/cache/client'
 
 // Code-split heavy UI sections
 const CustomSelect = dynamic(() => import('@/components/CustomSelect'), {

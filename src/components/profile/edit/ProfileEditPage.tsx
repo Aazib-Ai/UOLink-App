@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import Navbar from '../../Navbar'
 import ProfileEditForm from './ProfileEditForm'
-import { PageCacheProvider, useNavigationState } from '@/lib/cache'
+import { PageCacheProvider, useNavigationState } from '@/lib/cache/client'
 
 export default function ProfileEditPage() {
   const { user, loading } = useAuth()

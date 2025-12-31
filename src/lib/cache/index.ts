@@ -19,8 +19,5 @@ export { StateManager } from './page-cache/state-manager';
 export { NavigationGuard } from './page-cache/navigation-guard';
 export { BackgroundRefreshManager } from './page-cache/background-refresh-manager';
 
-// Page cache context and hooks
-export { PageCacheProvider, usePageCache } from './page-cache/page-cache-context';
-export { useCachedPage } from './page-cache/hooks/use-cached-page';
-export { useNavigationState } from './page-cache/hooks/use-navigation-state';
-export type { UseNavigationStateOptions } from './page-cache/hooks/use-navigation-state';
+// Note: Client-side hooks (PageCacheProvider, usePageCache, useCachedPage, useNavigationState)
+// are exported from './client.ts' to maintain Next.js client/server boundary

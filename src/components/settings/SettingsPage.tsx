@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import Navbar from '../Navbar'
 import PasswordChangeSection from './PasswordChangeSection'
 import { useProfileEditForm } from '@/hooks/useProfileEditForm'
-import { useNavigationState } from '@/lib/cache'
+import { useNavigationState } from '@/lib/cache/client'
 
 export default function SettingsPage() {
   const { user, loading } = useAuth()

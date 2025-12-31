@@ -21,7 +21,7 @@ import ProfileAbout from './profile/ProfileAbout'
 import ProfileFilters from './profile/ProfileFilters'
 import ProfileNotesList from './profile/ProfileNotesList'
 import { ProfileLoading, ProfileError } from './profile/ProfileStates'
-import { PageCacheProvider, useNavigationState } from '@/lib/cache'
+import { PageCacheProvider, useNavigationState } from '@/lib/cache/client'
 import '@/styles/skeletons.css'
 
 export default function PublicProfile() {

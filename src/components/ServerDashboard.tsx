@@ -5,7 +5,7 @@ import { DONATORS } from "./dashboard/constants"
 import ClientDashboard from '@/components/ClientDashboard'
 import { DashboardSkeleton } from '@/components/skeletons'
 import SuspenseWrapper from '@/components/SuspenseWrapper'
-import { PageCacheProvider } from '@/lib/cache'
+import { PageCacheProvider } from '@/lib/cache/client'
 
 // Server component for static dashboard layout
 export default function ServerDashboard() {

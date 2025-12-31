@@ -1,7 +1,7 @@
 import ServerNavbar from './ServerNavbar'
 import SuspenseWrapper from '@/components/SuspenseWrapper'
 import ClientTimetable from '@/components/ClientTimetable'
-import { PageCacheProvider } from '@/lib/cache'
+import { PageCacheProvider } from '@/lib/cache/client'
 
 // Server component for static timetable layout
 export default function ServerTimetablePage() {

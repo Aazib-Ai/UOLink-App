@@ -14,7 +14,7 @@ import { PageState } from '../types';
 // Mock DOM environment for testing
 const mockWindow = () => {
     if (typeof window === 'undefined') {
-        // @ts-ignore
+        // @ts-expect-error - Mock window for testing
         global.window = {
             scrollX: 0,
             scrollY: 0,
@@ -30,9 +30,9 @@ const mockWindow = () => {
                 length: 0,
             },
         };
-        // @ts-ignore
         global.document = {
             querySelector: jest.fn(),
+            // @ts-expect-error - Simplified mock for testing
             querySelectorAll: jest.fn(() => ({
                 length: 0,
                 item: () => null,
@@ -40,7 +40,6 @@ const mockWindow = () => {
                 [Symbol.iterator]: function* () { },
             })),
         };
-        // @ts-ignore
         global.requestAnimationFrame = jest.fn(cb => setTimeout(cb, 0));
     }
 };
