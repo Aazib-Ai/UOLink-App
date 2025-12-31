@@ -111,7 +111,7 @@ export class IndexedDBCache {
     /**
      * Retrieve cached entry by key
      */
-    async get<T>(key: string): Promise<CacheEntry<T> | null> {
+    async get<T>(key: string, ignoreExpiry: boolean = false): Promise<CacheEntry<T> | null> {
         await this.ensureInit();
 
         if (!this.db) {
@@ -138,9 +138,9 @@ export class IndexedDBCache {
                 const entry = result.entry as CacheEntry<T>;
 
                 // Check if expired
-                if (isExpired(entry)) {
-                    // Delete expired entry asynchronously
-                    this.delete(key).catch(console.error);
+                if (!ignoreExpiry && isExpired(entry)) {
+                    // Don't delete immediately to support offline fallback
+                    // this.delete(key).catch(console.error);
                     resolve(null);
                     return;
                 }

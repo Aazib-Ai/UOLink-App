@@ -63,6 +63,7 @@ export class NavigationGuard {
     private backgroundRefreshCallbacks: Map<string, BackgroundRefreshCallback> = new Map();
     private activeRefreshes: Set<string> = new Set();
     private currentRoute: string | null = null;
+    private isOfflineMode: boolean = false;
 
     constructor(
         cacheManager: CacheManager,
@@ -72,6 +73,13 @@ export class NavigationGuard {
         this.cacheManager = cacheManager;
         this.stateManager = stateManager;
         this.config = { ...DEFAULT_CONFIG, ...config };
+    }
+
+    /**
+     * Set offline mode
+     */
+    setOfflineMode(isOffline: boolean) {
+        this.isOfflineMode = isOffline;
     }
 
     /**
@@ -155,6 +163,12 @@ export class NavigationGuard {
      * Requirement 1.1 - Cache hit detection
      */
     private shouldUseCache(entry: CacheEntry<any>): boolean {
+        // Requirement 6.1 - Offline cached page serving
+        if (this.isOfflineMode) {
+            // In offline mode, use cache even if expired
+            return true;
+        }
+
         // Don't use if expired
         if (entry.expiresAt <= Date.now()) {
             return false;

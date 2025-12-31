@@ -134,7 +134,7 @@
   - **Property 22: Graceful error handling**
   - **Validates: Requirements 5.5**
 
-- [ ] 7. Add offline support and storage quota management
+- [x] 7. Add offline support and storage quota management
   - Implement offline detection and cached page serving
   - Create offline messaging for uncached pages
   - Add automatic refresh when coming back online
@@ -142,23 +142,23 @@
   - Add cache integrity preservation during extended offline periods
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ]* 7.1 Write property test for offline cached page serving
+- [x]* 7.1 Write property test for offline cached page serving
   - **Property 23: Offline cached page serving**
   - **Validates: Requirements 6.1**
 
-- [ ]* 7.2 Write property test for offline uncached page handling
+- [x]* 7.2 Write property test for offline uncached page handling
   - **Property 24: Offline uncached page handling**
   - **Validates: Requirements 6.2**
 
-- [ ]* 7.3 Write property test for online refresh of stale data
+- [x]* 7.3 Write property test for online refresh of stale data
   - **Property 25: Online refresh of stale data**
   - **Validates: Requirements 6.3**
 
-- [ ]* 7.4 Write property test for cache integrity during extended offline
+- [x]* 7.4 Write property test for cache integrity during extended offline
   - **Property 26: Cache integrity during extended offline**
   - **Validates: Requirements 6.4**
 
-- [ ]* 7.5 Write property test for storage quota management
+- [x]* 7.5 Write property test for storage quota management
   - **Property 27: Storage quota management**
   - **Validates: Requirements 6.5**
 

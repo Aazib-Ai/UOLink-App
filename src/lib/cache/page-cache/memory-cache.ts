@@ -43,7 +43,7 @@ export class MemoryCache {
     /**
      * Retrieve entry from memory cache
      */
-    get<T>(key: string): CacheEntry<T> | null {
+    get<T>(key: string, ignoreExpiry: boolean = false): CacheEntry<T> | null {
         const entry = this.cache.get(key);
 
         if (!entry) {
@@ -53,8 +53,9 @@ export class MemoryCache {
         }
 
         // Check if expired
-        if (isExpired(entry)) {
-            this.delete(key);
+        if (!ignoreExpiry && isExpired(entry)) {
+            // Don't delete immediately to support offline fallback
+            // this.delete(key); 
             this.stats.misses++;
             this.updateHitRate();
             return null;

@@ -78,6 +78,8 @@ export class CacheManager {
     private config: CacheConfig;
     private priorityWeights: ExtendedPriorityWeights;
     private recentRoutes: string[] = []; // Track recent navigation for priority
+    private isOfflineMode: boolean = false;
+
 
     constructor(config: Partial<CacheConfig> = {}) {
         this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
@@ -95,12 +97,42 @@ export class CacheManager {
     }
 
     /**
+     * Set offline mode to adjust cache behavior
+     * Supports Requirement 6.4 - Cache integrity during extended offline
+     */
+    setOfflineMode(isOffline: boolean): void {
+        this.isOfflineMode = isOffline;
+    }
+
+    /**
+     * Check storage quota usage
+     * Supports Requirement 6.5 - Storage quota monitoring
+     */
+    async checkStorageQuota(): Promise<{ usage: number; quota: number; percentage: number } | null> {
+        if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+            try {
+                const estimate = await navigator.storage.estimate();
+                if (estimate.usage !== undefined && estimate.quota !== undefined) {
+                    return {
+                        usage: estimate.usage,
+                        quota: estimate.quota,
+                        percentage: (estimate.usage / estimate.quota) * 100
+                    };
+                }
+            } catch (error) {
+                console.error('Failed to get storage estimate:', error);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get cached data with fallback from memory to IndexedDB
      * Supports Requirement 5.2 - Cache-first data fetching
      */
     async get<T>(key: string): Promise<CacheEntry<T> | null> {
         // Try memory cache first
-        const memoryEntry = this.memoryCache.get<T>(key);
+        const memoryEntry = this.memoryCache.get<T>(key, this.isOfflineMode);
         if (memoryEntry) {
             // Recalculate priority with extended weights if metadata includes page/content type
             if (memoryEntry.metadata.pageType && memoryEntry.metadata.contentType) {
@@ -116,7 +148,7 @@ export class CacheManager {
 
         // Fallback to IndexedDB
         if (this.indexedDBCache) {
-            const idbEntry = await this.indexedDBCache.get<T>(key);
+            const idbEntry = await this.indexedDBCache.get<T>(key, this.isOfflineMode);
             if (idbEntry) {
                 // Promote to memory cache
                 this.memoryCache.set(key, idbEntry);
@@ -216,6 +248,11 @@ export class CacheManager {
             // Under memory pressure, reduce to 50% of max
             const targetBytes = this.config.maxMemoryBytes * 0.5;
             await this.evictToTarget(targetBytes);
+        } else if (this.isOfflineMode) {
+            // In offline mode, we preserve as much as possible, only cleaning up extremely old items if absolutely necessary
+            // or valid "garbage". For now, we skip standard TTL cleanup for offline availability.
+            // Requirement 6.4 - Cache integrity preservation
+            return;
         } else {
             // Normal cleanup - use built-in memory cache cleanup
             this.memoryCache.cleanup();

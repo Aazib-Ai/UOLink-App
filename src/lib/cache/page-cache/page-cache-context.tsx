@@ -24,6 +24,10 @@ interface PageCacheContextType {
     // Error handling
     lastError: Error | null;
     clearError: () => void;
+
+    // Offline & Storage
+    isOffline: boolean;
+    storageQuota: { usage: number; quota: number; percentage: number } | null;
 }
 
 const PageCacheContext = createContext<PageCacheContextType | null>(null);
@@ -53,6 +57,8 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
 
     const [lastError, setLastError] = useState<Error | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [isOffline, setIsOffline] = useState(false);
+    const [storageQuota, setStorageQuota] = useState<{ usage: number; quota: number; percentage: number } | null>(null);
 
     // Initialize managers on first mount
     if (!cacheManagerRef.current) {
@@ -83,6 +89,48 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
             // This will be caught by ErrorBoundary usually, or we can handle in useEffect
         }
     }
+
+    // Handle online/offline events
+    useEffect(() => {
+        const updateOnlineStatus = () => {
+            const offline = !navigator.onLine;
+            setIsOffline(offline);
+
+            // Propagate to managers
+            if (cacheManagerRef.current) {
+                cacheManagerRef.current.setOfflineMode(offline);
+            }
+            if (navigationGuardRef.current) {
+                navigationGuardRef.current.setOfflineMode(offline);
+            }
+        };
+
+        // Initial check
+        updateOnlineStatus();
+
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+
+        return () => {
+            window.removeEventListener('online', updateOnlineStatus);
+            window.removeEventListener('offline', updateOnlineStatus);
+        };
+    }, []);
+
+    // Check storage quota periodically
+    useEffect(() => {
+        const checkQuota = async () => {
+            if (cacheManagerRef.current) {
+                const quota = await cacheManagerRef.current.checkStorageQuota();
+                setStorageQuota(quota);
+            }
+        };
+
+        checkQuota();
+        // Check every 5 minutes
+        const interval = setInterval(checkQuota, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Effect to ensure proper initialization completion if async work needed
     useEffect(() => {
@@ -170,7 +218,9 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         invalidateCache,
         subscribeToUpdates,
         lastError,
-        clearError
+        clearError,
+        isOffline,
+        storageQuota
     };
 
     return (
