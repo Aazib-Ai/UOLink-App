@@ -162,40 +162,40 @@
   - **Property 27: Storage quota management**
   - **Validates: Requirements 6.5**
 
-- [ ] 8. Implement priority calculation and adaptive behavior
+- [x] 8. Implement priority calculation and adaptive behavior
   - Create priority calculation algorithm using frequency and recency
   - Implement adaptive priority adjustment based on usage patterns
   - Add critical data protection during memory pressure
   - Create cleanup preservation for user input states
   - _Requirements: 3.5, 8.3, 8.4, 8.5_
 
-- [ ]* 8.1 Write property test for critical data preservation during cleanup
+- [x]* 8.1 Write property test for critical data preservation during cleanup
   - **Property 14: Critical data preservation during cleanup**
   - **Validates: Requirements 3.5**
 
-- [ ]* 8.2 Write property test for priority calculation with frequency and recency
+- [x]* 8.2 Write property test for priority calculation with frequency and recency
   - **Property 32: Priority calculation with frequency and recency**
   - **Validates: Requirements 8.3**
 
-- [ ]* 8.3 Write property test for adaptive priority based on usage patterns
+- [x]* 8.3 Write property test for adaptive priority based on usage patterns
   - **Property 33: Adaptive priority based on usage patterns**
   - **Validates: Requirements 8.4**
 
-- [ ]* 8.4 Write property test for critical data protection under memory pressure
+- [x]* 8.4 Write property test for critical data protection under memory pressure
   - **Property 34: Critical data protection under memory pressure**
   - **Validates: Requirements 8.5**
 
-- [ ] 9. Add navigation consistency and browser integration
+- [x] 9. Add navigation consistency and browser integration
   - Implement consistent component lifecycle during cache restoration
   - Add browser back/forward navigation support with state restoration
   - Create navigation hooks for existing page components
   - _Requirements: 7.3, 7.5_
 
-- [ ]* 9.1 Write property test for consistent component lifecycle during cache restoration
+- [x]* 9.1 Write property test for consistent component lifecycle during cache restoration
   - **Property 28: Consistent component lifecycle during cache restoration**
   - **Validates: Requirements 7.3**
 
-- [ ]* 9.2 Write property test for browser navigation state restoration
+- [x]* 9.2 Write property test for browser navigation state restoration
   - **Property 29: Browser navigation state restoration**
   - **Validates: Requirements 7.5**
 

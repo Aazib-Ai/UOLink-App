@@ -164,6 +164,30 @@ export class CacheManager {
                 }
                 return idbEntry;
             }
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get data synchronously from memory cache if available
+     * Supports Requirement 7.3 - Consistent component lifecycle during cache restoration
+     */
+    getSync<T>(key: string): CacheEntry<T> | null {
+        // Try memory cache
+        const memoryEntry = this.memoryCache.get<T>(key, this.isOfflineMode);
+        if (memoryEntry) {
+            // Recalculate priority with extended weights if metadata includes page/content type
+            if (memoryEntry.metadata.pageType && memoryEntry.metadata.contentType) {
+                memoryEntry.priority = this.calculateExtendedPriority(
+                    memoryEntry.metadata.pageType as PageType,
+                    memoryEntry.metadata.contentType as ContentType,
+                    memoryEntry.metadata.accessCount,
+                    memoryEntry.metadata.lastAccessedAt
+                );
+            }
+            return memoryEntry;
         }
 
         return null;
@@ -256,6 +280,10 @@ export class CacheManager {
         } else {
             // Normal cleanup - use built-in memory cache cleanup
             this.memoryCache.cleanup();
+
+            // Adaptive priority adjustment
+            // Supports Requirement 8.4 - Adaptive priority based on usage patterns
+            this.adaptPriorityWeights();
         }
 
         // Cleanup IndexedDB if needed
@@ -445,9 +473,9 @@ export class CacheManager {
                 break;
             }
 
-            // Don't evict critical data (priority > 80)
+            // Don't evict critical data (priority > 80) or unsaved changes
             // Supports Requirement 3.5 - Critical data preservation
-            if (entry.priority > 80) {
+            if (entry.priority > 80 || entry.metadata.hasUnsavedChanges) {
                 continue;
             }
 
@@ -484,5 +512,25 @@ export class CacheManager {
      */
     updatePriorityWeights(weights: Partial<ExtendedPriorityWeights>): void {
         this.priorityWeights = { ...this.priorityWeights, ...weights };
+        this.memoryCache.updateConfig({ priorityWeights: this.priorityWeights });
+    }
+
+    /**
+     * Adapt priority weights based on cache performance
+     * Supports Requirement 8.4 - Adaptive priority based on usage patterns
+     */
+    private adaptPriorityWeights(): void {
+        const stats = this.memoryCache.getStats();
+
+        // If hit rate is low, increase frequency weight to favor stable, popular items
+        if (stats.hitRate < this.config.minHitRateForAdaptation && stats.entries > 10) {
+            const newFrequency = Math.min(0.9, this.priorityWeights.frequency + 0.1);
+            const newRecency = Math.max(0.1, 1 - newFrequency - this.priorityWeights.pageType - this.priorityWeights.contentType); // Rebalance
+
+            this.updatePriorityWeights({
+                frequency: newFrequency,
+                recency: newRecency
+            });
+        }
     }
 }

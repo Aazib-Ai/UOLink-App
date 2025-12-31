@@ -19,6 +19,8 @@ export interface CacheMetadata {
   pageType?: string;
   /** Content type for priority calculation (optional for backward compatibility) */
   contentType?: string;
+  /** Critical flag: True if the page has unsaved user input */
+  hasUnsavedChanges?: boolean;
 }
 
 /**
@@ -101,6 +103,10 @@ export interface CacheConfig {
     /** Weight for recency (0-1) */
     recency: number;
   };
+  /** Minimum hit rate below which adaptation triggers (default: 0.3) */
+  minHitRateForAdaptation: number;
+  /** Number of evictions per minute considered thrashing (default: 50) */
+  thrashingThreshold: number;
 }
 
 /**
@@ -124,6 +130,8 @@ export interface CacheStats {
   entries: number;
   /** Number of stale entries */
   staleEntries: number;
+  /** Number of repeated evictions indicating thrashing */
+  thrashingCount: number;
 }
 
 /**
@@ -139,6 +147,8 @@ export const DEFAULT_CACHE_CONFIG: CacheConfig = {
     frequency: 0.6,
     recency: 0.4,
   },
+  minHitRateForAdaptation: 0.3,
+  thrashingThreshold: 50,
 };
 
 /**

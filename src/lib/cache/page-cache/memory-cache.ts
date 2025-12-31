@@ -32,6 +32,7 @@ export class MemoryCache {
         memoryBytes: 0,
         entries: 0,
         staleEntries: 0,
+        thrashingCount: 0,
     };
 
     constructor(config: Partial<CacheConfig> = {}) {
@@ -219,9 +220,9 @@ export class MemoryCache {
                 break;
             }
 
-            // Don't evict critical data (priority > 80)
+            // Don't evict critical data (priority > 80) or unsaved changes
             // Supports Requirement 3.5 - Critical data preservation
-            if (entry.priority > 80) {
+            if (entry.priority > 80 || entry.metadata.hasUnsavedChanges) {
                 continue;
             }
 

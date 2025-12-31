@@ -17,7 +17,7 @@ module.exports = {
         '^@/assets/(.*)$': '<rootDir>/src/assets/$1',
     },
     setupFiles: ['fake-indexeddb/auto'],
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
     collectCoverageFrom: [
         'src/**/*.{ts,tsx}',
         '!src/**/*.d.ts',

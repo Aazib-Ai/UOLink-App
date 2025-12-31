@@ -6,6 +6,7 @@ import { StateManager } from './state-manager';
 import { NavigationGuard } from './navigation-guard';
 import { BackgroundRefreshManager } from './background-refresh-manager';
 import { CacheEntry, DEFAULT_CACHE_CONFIG } from './types';
+import { usePathname } from 'next/navigation';
 
 interface PageCacheContextType {
     cacheManager: CacheManager;
@@ -15,6 +16,7 @@ interface PageCacheContextType {
 
     // Helper accessors
     getCacheEntry: <T>(key: string) => Promise<CacheEntry<T> | null>;
+    getCacheEntrySync: <T>(key: string) => CacheEntry<T> | null;
     setCacheEntry: <T>(key: string, data: T, metadata: CacheEntryMetadata) => Promise<void>;
     invalidateCache: (keyOrTags: string | string[]) => Promise<void>;
 
@@ -60,6 +62,9 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
     const [isOffline, setIsOffline] = useState(false);
     const [storageQuota, setStorageQuota] = useState<{ usage: number; quota: number; percentage: number } | null>(null);
 
+    const pathname = usePathname();
+    const prevPathnameRef = useRef<string | null>(null);
+
     // Initialize managers on first mount
     if (!cacheManagerRef.current) {
         try {
@@ -89,6 +94,20 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
             // This will be caught by ErrorBoundary usually, or we can handle in useEffect
         }
     }
+
+    // Handle navigation events for restoration
+    useEffect(() => {
+        if (pathname && navigationGuardRef.current) {
+            const from = prevPathnameRef.current || '';
+            // Use generic types roughly or update handleNavigation to be lenient?
+            // It essentially just checks cache and restores state.
+            navigationGuardRef.current.handleNavigation(pathname, from).catch(err => {
+                console.warn('Navigation restoration failed:', err);
+            });
+
+            prevPathnameRef.current = pathname;
+        }
+    }, [pathname]);
 
     // Handle online/offline events
     useEffect(() => {
@@ -180,6 +199,15 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         }
     }, []);
 
+    const getCacheEntrySync = useCallback(<T,>(key: string) => {
+        try {
+            return cacheManagerRef.current!.getSync<T>(key);
+        } catch (err) {
+            setLastError(err instanceof Error ? err : new Error(String(err)));
+            return null;
+        }
+    }, []);
+
     const setCacheEntry = useCallback(async <T,>(key: string, data: T, metadata: CacheEntryMetadata) => {
         try {
             await cacheManagerRef.current!.set(key, data, metadata);
@@ -214,6 +242,7 @@ export function PageCacheProvider({ children, config }: PageCacheProviderProps) 
         navigationGuard: navigationGuardRef.current,
         refreshManager: refreshManagerRef.current,
         getCacheEntry,
+        getCacheEntrySync,
         setCacheEntry,
         invalidateCache,
         subscribeToUpdates,
