@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { db } from '@/lib/firebase'
 import { syncUserProfileReferences } from '@/lib/firebase/profile-sync'
-import { slugify } from '@/lib/utils'
+import { slugify, decodeHtmlEntities } from '@/lib/utils'
 import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { uploadProfilePicture, deleteProfilePicture } from '@/lib/api/profile-picture'
 import { updateProfile } from '@/lib/api/profiles'
@@ -104,8 +104,8 @@ const mapSnapshotToProfileData = (uid: string, data: Record<string, any>): Profi
     major: data.major ?? '',
     semester: normalizeSemesterForUi(data.semester),
     section: data.section ?? '',
-    bio: data.bio ?? '',
-    about: data.about ?? '',
+    bio: decodeHtmlEntities(data.bio ?? ''),
+    about: decodeHtmlEntities(data.about ?? ''),
     skills: Array.isArray(data.skills) ? [...data.skills] : [],
     githubUrl: data.githubUrl ?? '',
     linkedinUrl: data.linkedinUrl ?? '',
@@ -524,17 +524,17 @@ export function useProfileEditForm() {
       const sanitizedFullName = profileData.fullName.trim()
       const sanitizedBio = profileData.bio.trim()
       const sanitizedAbout = profileData.about.trim()
-    const sanitizedGithubUrl = processSocialUrl(profileData.githubUrl, 'github')
-    const sanitizedLinkedinUrl = processSocialUrl(profileData.linkedinUrl, 'linkedin')
-    const sanitizedInstagramUrl = processSocialUrl(profileData.instagramUrl, 'instagram')
-    const sanitizedFacebookUrl = processSocialUrl(profileData.facebookUrl, 'facebook')
-    const sanitizedSemester = (() => {
-      const raw = (profileData.semester || '').trim()
-      if (!raw) return ''
-      const match = raw.match(/(\d+)/)
-      return match ? match[1] : raw
-    })()
-    const sanitizedSection = (profileData.section || '').trim().toUpperCase()
+      const sanitizedGithubUrl = processSocialUrl(profileData.githubUrl, 'github')
+      const sanitizedLinkedinUrl = processSocialUrl(profileData.linkedinUrl, 'linkedin')
+      const sanitizedInstagramUrl = processSocialUrl(profileData.instagramUrl, 'instagram')
+      const sanitizedFacebookUrl = processSocialUrl(profileData.facebookUrl, 'facebook')
+      const sanitizedSemester = (() => {
+        const raw = (profileData.semester || '').trim()
+        if (!raw) return ''
+        const match = raw.match(/(\d+)/)
+        return match ? match[1] : raw
+      })()
+      const sanitizedSection = (profileData.section || '').trim().toUpperCase()
 
       const sanitizedProfile = cloneProfileData({
         ...profileData,
@@ -651,7 +651,7 @@ export function useProfileEditForm() {
           pushSuccessMessage('Profile updated successfully!')
           didFallback = true
         }
-      } catch {}
+      } catch { }
       if (!didFallback) {
         const msg = err instanceof Error && /ERR_CONNECTION_REFUSED|Failed to fetch/i.test(err.message)
           ? 'Cannot connect to server. Start the dev server and try again.'

@@ -4,6 +4,7 @@ import React from 'react'
 import { User, GraduationCap, Sparkles } from 'lucide-react'
 import { ProfileData } from './types'
 import { formatAura } from '@/lib/aura'
+import { decodeHtmlEntities } from '@/lib/utils'
 
 interface ProfileAboutProps {
     profile: ProfileData
@@ -28,11 +29,12 @@ export default function ProfileAbout({
     stats,
     aura
 }: ProfileAboutProps) {
-    const trimmedAbout = profile.about?.trim()
+    const aboutContent = profile.about?.trim()
+    const decodedAbout = decodeHtmlEntities(aboutContent || '')
     const displayName = profile.displayName || profile.fullName || profile.username || ''
     const displayAbout =
-        trimmedAbout && trimmedAbout.length > 0
-            ? trimmedAbout
+        decodedAbout && decodedAbout.length > 0
+            ? decodedAbout
             : `${firstName || displayName} hasn't added an about section yet.`
 
     return (
@@ -42,7 +44,7 @@ export default function ProfileAbout({
                     <User className="h-5 w-5 text-[#90c639]" />
                     About {firstName || displayName}
                 </div>
-                <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-[#334125]">
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[#334125]">
                     {displayAbout}
                 </p>
             </div>

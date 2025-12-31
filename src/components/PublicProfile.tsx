@@ -21,13 +21,20 @@ import ProfileAbout from './profile/ProfileAbout'
 import ProfileFilters from './profile/ProfileFilters'
 import ProfileNotesList from './profile/ProfileNotesList'
 import { ProfileLoading, ProfileError } from './profile/ProfileStates'
+import { PageCacheProvider, useNavigationState } from '@/lib/cache/client'
 import '@/styles/skeletons.css'
 
 export default function PublicProfile() {
     return (
-        <ProfileCacheProvider>
-            <PublicProfileContent />
-        </ProfileCacheProvider>
+        <PageCacheProvider config={{
+            maxMemoryBytes: 10 * 1024 * 1024, // 10MB for profiles
+            maxIndexedDBBytes: 20 * 1024 * 1024, // 20MB persistent
+            staleTTL: 10 * 60 * 1000, // 10 minutes stale time
+        }}>
+            <ProfileCacheProvider>
+                <PublicProfileContent />
+            </ProfileCacheProvider>
+        </PageCacheProvider>
     )
 }
 
@@ -115,6 +122,16 @@ function PublicProfileContent() {
             setIsLoadingMore(false)
         }
     }, [filteredNotesLength, displayedNotesLength, serverHasMore, profile?.id, lastDoc])
+
+    // Enable state persistence for search and filters
+    useNavigationState({
+        selectors: {
+            search: '#profile-search-input',
+            filters: ['#subject-filter-dropdown'],
+        },
+        restoreOnMount: true,
+        captureOnUnmount: true,
+    })
 
     // Reset displayed count when filters change
     useEffect(() => {
@@ -308,28 +325,28 @@ function PublicProfileContent() {
 
                             {/* Notes Content - Fixed Height */}
                             <div className="p-6 sm:p-8 lg:p-10">
-                                <div 
+                                <div
                                     className="w-full"
                                     style={{ minHeight: '500px' }}
                                 >
                                     <ProfileNotesList
                                         filteredNotes={filteredNotes}
                                         displayedNotes={displayedNotes}
-                                    hasMoreNotes={hasMoreNotes}
-                                    loadMoreNotes={loadMoreNotes}
-                                    handleViewNote={handleViewNote}
-                                    userNotesLength={userNotes.length}
-                                    firstName={firstName}
-                                    fullName={profile.fullName}
-                                    searchTerm={searchTerm}
-                                    selectedSubject={selectedSubject}
-                                    clearFilters={clearFilters}
-                                    isLoadingMore={isLoadingMore}
-                                />
+                                        hasMoreNotes={hasMoreNotes}
+                                        loadMoreNotes={loadMoreNotes}
+                                        handleViewNote={handleViewNote}
+                                        userNotesLength={userNotes.length}
+                                        firstName={firstName}
+                                        fullName={profile.fullName}
+                                        searchTerm={searchTerm}
+                                        selectedSubject={selectedSubject}
+                                        clearFilters={clearFilters}
+                                        isLoadingMore={isLoadingMore}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
                 </div>
             </main>
         </div>

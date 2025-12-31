@@ -7,6 +7,7 @@ import { useTimetableData, TimetableEntry } from '@/hooks/useTimetableData'
 import { useAuth } from '@/contexts/AuthContext'
 import { getUserPrefs, setUserPrefs, getGuestPrefs, setGuestPrefs, mapMajorToDepartment, inferSubDepartment } from '@/lib/preferences/timetable'
 import { getProfileAcademic } from '@/lib/firebase/profile-lite'
+import { useNavigationState } from '@/lib/cache/client'
 
 // Code-split heavy UI sections
 const CustomSelect = dynamic(() => import('@/components/CustomSelect'), {
@@ -255,6 +256,15 @@ export default function ClientTimetable(): JSX.Element {
       setGuestPrefs(prefs)
     }
   }, [department, subDept, semester, section, user?.uid])
+
+  // Enable navigation state persistence for filter selections and day
+  useNavigationState({
+    selectors: {
+      filters: ['#department-select', '#subdepartment-select', '#semester-select', '#section-select'],
+    },
+    restoreOnMount: true,
+    captureOnUnmount: true,
+  })
 
   const jumpToNow = React.useCallback(() => {
     const now = new Date()
@@ -569,13 +579,13 @@ export default function ClientTimetable(): JSX.Element {
                 </div>
 
                 <div className="mt-5">
-                   <h1 className="text-7xl font-black text-slate-900 tracking-widest mb-7 uppercase leading-none">{day}</h1>
-                     <div className="flex items-center gap-3 flex-wrap translate-y-[-2px]">
-    
-                        
-                        <div className="px-6 rounded-xl bg-slate-900 text-white font-bold text-xl tracking-wide inline-flex items-center justify-center h-10 leading-none pb-5">
-                       {department}
-                        </div>
+                  <h1 className="text-7xl font-black text-slate-900 tracking-widest mb-7 uppercase leading-none">{day}</h1>
+                  <div className="flex items-center gap-3 flex-wrap translate-y-[-2px]">
+
+
+                    <div className="px-6 rounded-xl bg-slate-900 text-white font-bold text-xl tracking-wide inline-flex items-center justify-center h-10 leading-none pb-5">
+                      {department}
+                    </div>
                     {semester && (
                       <div className="px-6 rounded-xl bg-white border-2 border-slate-100 text-slate-700 font-bold text-xl tracking-wide inline-flex items-center justify-center h-10 leading-none pb-5">
                         Semester {semester}
