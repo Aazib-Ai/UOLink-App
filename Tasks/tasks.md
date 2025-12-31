@@ -96,26 +96,26 @@
   - **Property 4: Background refresh for stale data**
   - **Validates: Requirements 1.4**
 
-- [ ] 5. Create BackgroundRefreshManager
+- [x] 5. Create BackgroundRefreshManager
   - Implement background refresh scheduling and execution
   - Add exponential backoff retry logic for failed refreshes
   - Create seamless cache update mechanism
   - Implement user interaction detection to defer updates
   - _Requirements: 4.1, 4.2, 4.4, 4.5_
 
-- [ ]* 5.1 Write property test for background refresh initiation
+- [x]* 5.1 Write property test for background refresh initiation
   - **Property 15: Background refresh initiation**
   - **Validates: Requirements 4.1**
 
-- [ ]* 5.2 Write property test for seamless cache updates
+- [x]* 5.2 Write property test for seamless cache updates
   - **Property 16: Seamless cache updates**
   - **Validates: Requirements 4.2**
 
-- [ ]* 5.3 Write property test for retry with exponential backoff
+- [x]* 5.3 Write property test for retry with exponential backoff
   - **Property 17: Retry with exponential backoff**
   - **Validates: Requirements 4.4**
 
-- [ ]* 5.4 Write property test for deferred updates during interaction
+- [x]* 5.4 Write property test for deferred updates during interaction
   - **Property 18: Deferred updates during interaction**
   - **Validates: Requirements 4.5**
 

@@ -9,3 +9,5 @@ export { CacheManager, PageType, ContentType } from './cache-manager';
 export { StateManager } from './state-manager';
 export { NavigationGuard } from './navigation-guard';
 export type { NavigationResult, BackgroundRefreshCallback, NavigationGuardConfig } from './navigation-guard';
+export { BackgroundRefreshManager } from './background-refresh-manager';
+export type { RefreshCallback, UpdateCallback, BackgroundRefreshConfig } from './background-refresh-manager';
