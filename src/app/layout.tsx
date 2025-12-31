@@ -9,6 +9,7 @@ import { NotesContextProvider } from '@/contexts/NotesContextProvider'
 import { SavedNotesContextProvider } from '@/contexts/SavedNotesContextProvider'
 import { UserInteractionsProvider } from '@/contexts/UserInteractionsContext'
 import { DashboardStateProvider } from '@/hooks/useDashboardState'
+import { PageCacheProvider } from '@/lib/cache/page-cache/page-cache-context'
 import { AuthProvider } from '@/contexts/AuthContext'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 import PWAUpdateNotification from '@/components/PWAUpdateNotification'
@@ -163,15 +164,17 @@ export default async function RootLayout({
                 <NotesContextProvider>
                   <SavedNotesContextProvider>
                     <DashboardStateProvider>
-                    <SplashScreen />
-                    <MainContent>
-                      <OfflineBanner />
-                      <div className="min-h-screen bg-gradient-to-r flex flex-col from-yellow-50 to-amber-50 mobile-viewport">
-                        {children}
-                      </div>
-                      <PWAInstallPrompt />
-                      <PWAUpdateNotification />
-                    </MainContent>
+                      <PageCacheProvider>
+                        <SplashScreen />
+                        <MainContent>
+                          <OfflineBanner />
+                          <div className="min-h-screen bg-gradient-to-r flex flex-col from-yellow-50 to-amber-50 mobile-viewport">
+                            {children}
+                          </div>
+                          <PWAInstallPrompt />
+                          <PWAUpdateNotification />
+                        </MainContent>
+                      </PageCacheProvider>
                     </DashboardStateProvider>
                   </SavedNotesContextProvider>
                 </NotesContextProvider>
