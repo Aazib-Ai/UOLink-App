@@ -1,4 +1,4 @@
-const CACHE_NAME = 'uolink-v1';
+const CACHE_NAME = 'uolink-v2';
 // Silence console logs in production environments
 // Only log when running on localhost to avoid noisy outputs for end users
 try {
@@ -15,9 +15,9 @@ try {
     }
   }
 } catch { }
-const STATIC_CACHE_NAME = 'uolink-static-v1';
-const DYNAMIC_CACHE_NAME = 'uolink-dynamic-v1';
-const PAGE_STATE_DB_NAME = 'uolink-page-cache';
+const STATIC_CACHE_NAME = 'uolink-static-v2';
+const DYNAMIC_CACHE_NAME = 'uolink-dynamic-v2';
+const PAGE_STATE_DB_NAME = 'uolink-page-cache-v2';
 const PAGE_STATE_STORE_NAME = 'page-states';
 const PAGE_STATE_DB_VERSION = 1;
 
@@ -269,30 +269,24 @@ function scheduleIdleWarmCache() {
 self.addEventListener('install', (event) => {
   console.log('Service Worker installing...');
   event.waitUntil(
-    Promise.all([
-      // Cache static assets
-      caches.open(STATIC_CACHE_NAME)
-        .then((cache) => {
-          console.log('Caching static assets');
-          // Cache assets individually to handle failures gracefully
-          return Promise.allSettled(
-            STATIC_ASSETS.map(asset =>
-              cache.add(asset).catch(err => {
-                console.warn(`Failed to cache ${asset}:`, err);
-                return null;
-              })
-            )
-          );
-        }),
-      // Warm cache for high priority routes
-      warmCache(),
-    ])
+    caches.open(STATIC_CACHE_NAME)
+      .then((cache) => {
+        console.log('Caching static assets');
+        // Critical assets that MUST be cached for the SW to be considered successfully installed
+        return cache.addAll(STATIC_ASSETS);
+      })
+      .then(() => {
+        // Warm cache for high priority routes (can fail without blocking install)
+        warmCache().catch(err => console.warn('Warming cache failed but continuing:', err));
+      })
       .then(() => {
         console.log('Service Worker installed successfully');
         return self.skipWaiting();
       })
       .catch(error => {
+        // If critical assets fail, we want installation to fail so we don't serve a broken app
         console.error('Service Worker installation failed:', error);
+        throw error;
       })
   );
 });
@@ -501,64 +495,64 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        // Check page state cache first
-        const pageStateKey = `page:${url.pathname}`;
-        const cachedPageState = await getPageState(pageStateKey);
-
-        const isOffline = !self.navigator.onLine;
-
-        // If we have cached page state
-        if (cachedPageState) {
-          const isStale = cachedPageState.entry.stale ||
-            (Date.now() - cachedPageState.entry.timestamp) > 300000; // 5 minutes
-
-          // If offline, serve cached page state (Requirement 6.1)
-          if (isOffline) {
-            console.log(`Serving cached page offline: ${url.pathname}`);
-            const cachedResponse = await caches.match(request);
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-          }
-
-          // If stale but online, serve cached and refresh in background (Requirement 6.3)
-          if (isStale && !isOffline) {
-            console.log(`Serving stale cached page with background refresh: ${url.pathname}`);
-
-            // Serve cached response immediately
-            const cachedResponse = await caches.match(request);
-
-            // Trigger background refresh
-            fetch(request)
-              .then(response => {
-                if (response.ok) {
-                  const responseClone = response.clone();
-                  caches.open(DYNAMIC_CACHE_NAME)
-                    .then(cache => {
-                      cache.put(request, responseClone);
-                    });
-
-                  // Notify clients of update
-                  broadcastToClients({
-                    type: SWMessageType.CACHE_UPDATED,
-                    key: pageStateKey,
-                    source: 'service-worker',
-                    timestamp: Date.now(),
-                  });
-                }
-              })
-              .catch(error => {
-                console.error('Background refresh failed:', error);
-              });
-
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-          }
-        }
-
-        // Try network first with timeout
         try {
+          // Check page state cache first
+          const pageStateKey = `page:${url.pathname}`;
+          const cachedPageState = await getPageState(pageStateKey);
+
+          const isOffline = !self.navigator.onLine;
+
+          // If we have cached page state
+          if (cachedPageState) {
+            const isStale = cachedPageState.entry.stale ||
+              (Date.now() - cachedPageState.entry.timestamp) > 300000; // 5 minutes
+
+            // If offline, serve cached page state (Requirement 6.1)
+            if (isOffline) {
+              console.log(`Serving cached page offline: ${url.pathname}`);
+              const cachedResponse = await caches.match(request);
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+            }
+
+            // If stale but online, serve cached and refresh in background (Requirement 6.3)
+            if (isStale && !isOffline) {
+              console.log(`Serving stale cached page with background refresh: ${url.pathname}`);
+
+              // Serve cached response immediately
+              const cachedResponse = await caches.match(request);
+
+              // Trigger background refresh
+              fetch(request)
+                .then(response => {
+                  if (response.ok) {
+                    const responseClone = response.clone();
+                    caches.open(DYNAMIC_CACHE_NAME)
+                      .then(cache => {
+                        cache.put(request, responseClone);
+                      });
+
+                    // Notify clients of update
+                    broadcastToClients({
+                      type: SWMessageType.CACHE_UPDATED,
+                      key: pageStateKey,
+                      source: 'service-worker',
+                      timestamp: Date.now(),
+                    });
+                  }
+                })
+                .catch(error => {
+                  console.error('Background refresh failed:', error);
+                });
+
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+            }
+          }
+
+          // Try network first with timeout
           const response = await Promise.race([
             fetch(request),
             new Promise((_, reject) =>
@@ -575,13 +569,61 @@ self.addEventListener('fetch', (event) => {
               });
           }
           return response;
+
         } catch (error) {
           // Fallback to cached page or offline page (Requirement 6.4)
-          const cachedResponse = await caches.match(request);
-          if (cachedResponse) {
-            return cachedResponse;
+          console.error(`Navigation failed for ${url.pathname}, trying fallback:`, error);
+
+          try {
+            const cachedResponse = await caches.match(request);
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+
+            const offlineResponse = await caches.match('/offline');
+            if (offlineResponse) {
+              return offlineResponse;
+            }
+
+            // EMERGENCY FALLBACK: If everything else fails, return a manual response
+            // This prevents "This site can't be reached" errors
+            return new Response(`
+              <!DOCTYPE html>
+              <html lang="en">
+              <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Offline</title>
+                <style>
+                  body { font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #121212; color: white; text-align: center; padding: 20px; }
+                  h1 { margin-bottom: 1rem; }
+                  p { opacity: 0.8; margin-bottom: 2rem; }
+                  button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 500; }
+                  button:hover { background: #2563eb; }
+                </style>
+              </head>
+              <body>
+                <h1>You seem to be offline</h1>
+                <p>We couldn't load this page and no saved version was found.</p>
+                <button onclick="window.location.reload()">Try Again</button>
+              </body>
+              </html>
+            `, {
+              headers: {
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-store'
+              }
+            });
+
+          } catch (fallbackError) {
+            console.error('Even fallback failed:', fallbackError);
+            // Return a super-basic text response as absolutely last resort
+            return new Response('You are offline and no cache is available.', {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: { 'Content-Type': 'text/plain' }
+            });
           }
-          return caches.match('/offline');
         }
       })()
     );
