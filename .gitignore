@@ -181,3 +181,24 @@ Thumbs.db
 # ensure their local configuration files (containing credentials or overrides)
 # use .env.* or project-local files and thus match the patterns above.
 # Source code for admin/moderation panels remains committed for production.
+# ===================================================================
+# IGNORED TASK AND TEST FILES (User Request)
+# ===================================================================
+
+# Task management files
+Tasks/
+
+# Test output and logs
+test-output.txt
+test_output.txt
+lint-output.txt
+
+# Test files and directories
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Test scripts
+scripts/test-*
