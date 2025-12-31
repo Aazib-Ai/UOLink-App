@@ -4,6 +4,7 @@ import React from 'react'
 import { Calendar } from 'lucide-react'
 import { ProfileData, Badge, SocialLink } from './types'
 import { getAuraTier } from '@/lib/aura'
+import { decodeHtmlEntities } from '@/lib/utils'
 
 interface ProfileHeaderProps {
     profile: ProfileData
@@ -25,11 +26,12 @@ export default function ProfileHeader({
     heroTagline
 }: ProfileHeaderProps) {
     const auraInfo = getAuraTier(profile.aura ?? 0)
-    const trimmedBio = profile.bio?.trim()
+    const bioContent = profile.bio?.trim()
+    const decodedBio = decodeHtmlEntities(bioContent || '')
     const displayName = profile.displayName || profile.fullName || profile.username || ''
     const displayBio =
-        trimmedBio && trimmedBio.length > 0
-            ? trimmedBio
+        decodedBio && decodedBio.length > 0
+            ? decodedBio
             : `Say hi to ${firstName || displayName}. They are busy sharing knowledge with Uolink.`
 
     return (
