@@ -1,22 +1,29 @@
 import Link from 'next/link'
 import ClientNavbar from '@/components/ClientNavbar'
+import MobileHeader from '@/components/MobileHeader'
 
 // Server component for static navbar parts
 export default function ServerNavbar() {
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 mt-2">
-      <nav className="shadow-md border border-amber-200 flex items-center bg-yellow-50 rounded-full w-full max-w-7xl px-3 md:px-5">
-        <div className="container mx-auto flex justify-between py-2 md:py-3 px-1 items-center">
-          {/* Static Logo - Server Component */}
-          <Link href="/" className="flex items-center h-8 md:h-10">
-            <img src="/uolink-logo.png" alt="UOLINK" className="h-20 w-auto md:h-32 md:w-auto mr-1 md:mr-2 mt-1 md:mt-2" />
-          </Link>
-          
-          {/* Client-side interactive parts */}
-          <ClientNavbar />
-        </div>
-      </nav>
-    </div>
+    <>
+      {/* Mobile Header - Only visible on mobile */}
+      <MobileHeader />
+
+      {/* Desktop Navbar - Hidden on mobile */}
+      <div className="hidden md:flex fixed top-0 left-0 right-0 z-50 justify-center px-4 mt-2">
+        <nav className="shadow-md border border-amber-200 flex items-center bg-yellow-50 rounded-full w-full max-w-7xl px-3 md:px-5">
+          <div className="container mx-auto flex justify-between py-2 md:py-3 px-1 items-center">
+            {/* Static Logo - Server Component */}
+            <Link href="/" className="flex items-center h-8 md:h-10">
+              <img src="/uolink-logo.png" alt="UOLINK" className="h-20 w-auto md:h-32 md:w-auto mr-1 md:mr-2 mt-1 md:mt-2" />
+            </Link>
+
+            {/* Client-side interactive parts */}
+            <ClientNavbar />
+          </div>
+        </nav>
+      </div>
+    </>
   )
 }
 
@@ -37,4 +44,3 @@ export function StaticNavLinks() {
     </div>
   )
 }
-

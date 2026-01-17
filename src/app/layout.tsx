@@ -17,6 +17,7 @@ import OfflineBanner from '@/components/OfflineBanner'
 import SplashScreen from '@/components/SplashScreen'
 import MainContent from '@/components/MainContent'
 import PWAProvider from '@/components/PWAProvider'
+import MobileBottomNav from '@/components/MobileBottomNav'
 import { SplashProvider } from '@/contexts/SplashContext'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -168,9 +169,10 @@ export default async function RootLayout({
                         <SplashScreen />
                         <MainContent>
                           <OfflineBanner />
-                          <div className="min-h-screen bg-gradient-to-r flex flex-col from-yellow-50 to-amber-50 mobile-viewport">
+                          <div className="min-h-screen bg-gradient-to-r flex flex-col from-yellow-50 to-amber-50 mobile-viewport mobile-nav-padding">
                             {children}
                           </div>
+                          <MobileBottomNav />
                           <PWAInstallPrompt />
                           <PWAUpdateNotification />
                         </MainContent>
