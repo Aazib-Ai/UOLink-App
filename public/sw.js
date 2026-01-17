@@ -496,79 +496,43 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         try {
-          // Check page state cache first
-          const pageStateKey = `page:${url.pathname}`;
-          const cachedPageState = await getPageState(pageStateKey);
+          // Stale-While-Revalidate Strategy for Navigation
+          // 1. Try to get from cache immediately
+          const cachedResponse = await caches.match(request);
 
-          const isOffline = !self.navigator.onLine;
+          if (cachedResponse) {
+            // Return cached response immediately
+            // formatting this slightly differently to ensure it returns fast
+            const fetchPromise = fetch(request)
+              .then(async (networkResponse) => {
+                if (networkResponse.ok) {
+                  const cache = await caches.open(DYNAMIC_CACHE_NAME);
+                  await cache.put(request, networkResponse.clone());
 
-          // If we have cached page state
-          if (cachedPageState) {
-            const isStale = cachedPageState.entry.stale ||
-              (Date.now() - cachedPageState.entry.timestamp) > 300000; // 5 minutes
+                  // Optional: Broadcast to client that a new version is available
+                  // This allows the UI to show a "New content available" toast if needed
+                  broadcastToClients({
+                    type: SWMessageType.CACHE_UPDATED,
+                    url: request.url,
+                    timestamp: Date.now()
+                  });
+                }
+              })
+              .catch(err => console.log('Background update failed', err));
 
-            // If offline, serve cached page state (Requirement 6.1)
-            if (isOffline) {
-              console.log(`Serving cached page offline: ${url.pathname}`);
-              const cachedResponse = await caches.match(request);
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-            }
-
-            // If stale but online, serve cached and refresh in background (Requirement 6.3)
-            if (isStale && !isOffline) {
-              console.log(`Serving stale cached page with background refresh: ${url.pathname}`);
-
-              // Serve cached response immediately
-              const cachedResponse = await caches.match(request);
-
-              // Trigger background refresh
-              fetch(request)
-                .then(response => {
-                  if (response.ok) {
-                    const responseClone = response.clone();
-                    caches.open(DYNAMIC_CACHE_NAME)
-                      .then(cache => {
-                        cache.put(request, responseClone);
-                      });
-
-                    // Notify clients of update
-                    broadcastToClients({
-                      type: SWMessageType.CACHE_UPDATED,
-                      key: pageStateKey,
-                      source: 'service-worker',
-                      timestamp: Date.now(),
-                    });
-                  }
-                })
-                .catch(error => {
-                  console.error('Background refresh failed:', error);
-                });
-
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-            }
+            // Don't await the network update, just return cache
+            return cachedResponse;
           }
 
-          // Try network first with timeout
-          const response = await Promise.race([
-            fetch(request),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Network timeout')), 3000)
-            )
-          ]);
+          // 2. If not in cache, go to network
+          const networkResponse = await fetch(request);
 
-          // Cache successful page responses
-          if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(DYNAMIC_CACHE_NAME)
-              .then((cache) => {
-                cache.put(request, responseClone);
-              });
+          if (networkResponse.ok) {
+            const cache = await caches.open(DYNAMIC_CACHE_NAME);
+            await cache.put(request, networkResponse.clone());
           }
-          return response;
+
+          return networkResponse;
 
         } catch (error) {
           // Fallback to cached page or offline page (Requirement 6.4)

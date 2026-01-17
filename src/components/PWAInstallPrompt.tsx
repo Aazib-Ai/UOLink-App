@@ -27,7 +27,7 @@ export default function PWAInstallPrompt() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
+
       // Show prompt after a delay if not dismissed before
       setTimeout(() => {
         const dismissed = localStorage.getItem('pwa-install-dismissed');
@@ -44,7 +44,7 @@ export default function PWAInstallPrompt() {
     if (dismissed) {
       const dismissedTime = parseInt(dismissed);
       const daysSinceDismissed = (Date.now() - dismissedTime) / (1000 * 60 * 60 * 24);
-      
+
       // Show again after 7 days
       if (daysSinceDismissed > 7) {
         localStorage.removeItem('pwa-install-dismissed');
@@ -60,14 +60,14 @@ export default function PWAInstallPrompt() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      
+
       if (outcome === 'accepted') {
         console.log('User accepted the install prompt');
       } else {
         console.log('User dismissed the install prompt');
         localStorage.setItem('pwa-install-dismissed', Date.now().toString());
       }
-      
+
       setDeferredPrompt(null);
       setShowPrompt(false);
     }
@@ -84,7 +84,7 @@ export default function PWAInstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-sm">
+    <div className="fixed bottom-24 left-4 right-4 z-[60] md:left-auto md:right-4 md:max-w-sm">
       <div className="bg-white rounded-lg shadow-lg border border-amber-200 p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center space-x-2">
@@ -100,7 +100,7 @@ export default function PWAInstallPrompt() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        
+
         <p className="text-sm text-gray-600 mb-4">
           Get the full app experience with offline access, push notifications, and faster loading.
         </p>
