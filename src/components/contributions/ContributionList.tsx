@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useMemo, useCallback, memo } from 'react'
 import { FileText, Plus, Calendar, Pencil, Eye, Download, Trash2, Loader2 } from 'lucide-react'
 import PWADownloadButton from '../PWADownloadButton'
 
@@ -128,257 +128,257 @@ export default function ContributionList({
 
   return (
     <>
-    <section className="mt-8 space-y-5">
-      {notes.map((note) => {
-        const isEditing = editingId === note.id
-        const isSaving = noteActionState?.id === note.id && noteActionState.type === 'save'
-        const isDeleting = noteActionState?.id === note.id && noteActionState.type === 'delete'
+      <section className="mt-8 space-y-5">
+        {notes.map((note) => {
+          const isEditing = editingId === note.id
+          const isSaving = noteActionState?.id === note.id && noteActionState.type === 'save'
+          const isDeleting = noteActionState?.id === note.id && noteActionState.type === 'delete'
 
-        return (
-          <article
-            key={note.id}
-            className="rounded-3xl border border-amber-200/70 bg-white/90 p-6 shadow-sm transition hover:shadow-md backdrop-blur-sm"
-          >
-            {isEditing ? (
-              <div className="space-y-5">
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={noteDraft.name}
-                    onChange={(event) => onNoteDraftChange({ ...noteDraft, name: event.target.value })}
-                    className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
-                    placeholder="e.g., Calculus Midterm Solutions"
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="md:col-span-1">
+          return (
+            <article
+              key={note.id}
+              className="rounded-3xl border border-amber-200/70 bg-white/90 p-6 shadow-sm transition hover:shadow-md backdrop-blur-sm"
+            >
+              {isEditing ? (
+                <div className="space-y-5">
+                  <div>
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Subject
+                      Title
                     </label>
                     <input
                       type="text"
-                      value={noteDraft.subject}
-                      onChange={(event) => onNoteDraftChange({ ...noteDraft, subject: event.target.value })}
+                      value={noteDraft.name}
+                      onChange={(event) => onNoteDraftChange({ ...noteDraft, name: event.target.value })}
                       className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
-                      placeholder="Start typing to find a subject"
-                    />
-                    {subjectError && (
-                      <p className="mt-2 text-xs font-semibold text-rose-600">{subjectError}</p>
-                    )}
-                    {subjectSuggestions.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {subjectSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion}
-                            type="button"
-                            onClick={() => onSubjectSuggestionClick(suggestion)}
-                            className="rounded-full border border-[#90c639]/30 bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316] transition hover:bg-[#e8f6d1]"
-                          >
-                            {suggestion}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Teacher
-                    </label>
-                    <input
-                      type="text"
-                      value={noteDraft.teacher}
-                      onChange={(event) => onNoteDraftChange({ ...noteDraft, teacher: event.target.value })}
-                      className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
-                      placeholder="Start typing to find a teacher"
-                    />
-                    {teacherSuggestions.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {teacherSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion}
-                            type="button"
-                            onClick={() => onTeacherSuggestionClick(suggestion)}
-                            className="rounded-full border border-[#90c639]/30 bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316] transition hover:bg-[#e8f6d1]"
-                          >
-                            {suggestion}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {teacherWarning && (
-                      <p className="mt-2 text-xs font-semibold text-amber-600">{teacherWarning}</p>
-                    )}
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Semester
-                    </label>
-                    <input
-                      type="text"
-                      value={noteDraft.semester}
-                      onChange={(event) => onNoteDraftChange({ ...noteDraft, semester: event.target.value })}
-                      className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
-                      placeholder="e.g., 1"
+                      placeholder="e.g., Calculus Midterm Solutions"
                     />
                   </div>
-                </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={onEditSave}
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#90c639] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#7ab332] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Save changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onEditCancel}
-                    className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex-1">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#f4fbe8] text-[#365316]">
-                      <FileText className="h-6 w-6" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">{note.name}</h3>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {note.subject && (
-                          <span className="inline-flex items-center rounded-full bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316]">
-                            {note.subject}
-                          </span>
-                        )}
-                        {(note.teacher || note.module) && (
-                          <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                            {note.teacher || note.module}
-                          </span>
-                        )}
-                        {note.semester && (
-                          <span className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
-                            Semester {note.semester}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs font-medium text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5" />
-                          Uploaded {formatDisplayDate(note.uploadedAt)}
-                        </span>
-                        {note.updatedAt && note.updatedAt !== note.uploadedAt && (
-                          <span className="flex items-center gap-1">
-                            <Pencil className="h-3.5 w-3.5" />
-                            Edited {formatDisplayDate(note.updatedAt)}
-                          </span>
-                        )}
-                        <span>{formatFileSize(note.fileSize)}</span>
-                      </div>
-
-                      {(note.contributorDisplayName || note.contributorName) && (
-                        <p className="mt-3 text-sm text-gray-600">
-                          Shared as{' '}
-                          <span className="font-semibold text-gray-800">
-                            {note.contributorDisplayName || note.contributorName}
-                          </span>
-                        </p>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="md:col-span-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Subject
+                      </label>
+                      <input
+                        type="text"
+                        value={noteDraft.subject}
+                        onChange={(event) => onNoteDraftChange({ ...noteDraft, subject: event.target.value })}
+                        className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
+                        placeholder="Start typing to find a subject"
+                      />
+                      {subjectError && (
+                        <p className="mt-2 text-xs font-semibold text-rose-600">{subjectError}</p>
                       )}
-
-                      {note.fileUrl && (
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => onView(note.fileUrl)}
-                            className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                          >
-                            <Eye className="h-4 w-4" />
-                            View
-                          </button>
-                          <PWADownloadButton
-                            url={note.fileUrl}
-                            title={note.subject}
-                            className="rounded-full"
-                          />
+                      {subjectSuggestions.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {subjectSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              onClick={() => onSubjectSuggestionClick(suggestion)}
+                              className="rounded-full border border-[#90c639]/30 bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316] transition hover:bg-[#e8f6d1]"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
+
+                    <div className="md:col-span-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Teacher
+                      </label>
+                      <input
+                        type="text"
+                        value={noteDraft.teacher}
+                        onChange={(event) => onNoteDraftChange({ ...noteDraft, teacher: event.target.value })}
+                        className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
+                        placeholder="Start typing to find a teacher"
+                      />
+                      {teacherSuggestions.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {teacherSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              onClick={() => onTeacherSuggestionClick(suggestion)}
+                              className="rounded-full border border-[#90c639]/30 bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316] transition hover:bg-[#e8f6d1]"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {teacherWarning && (
+                        <p className="mt-2 text-xs font-semibold text-amber-600">{teacherWarning}</p>
+                      )}
+                    </div>
+
+                    <div className="md:col-span-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Semester
+                      </label>
+                      <input
+                        type="text"
+                        value={noteDraft.semester}
+                        onChange={(event) => onNoteDraftChange({ ...noteDraft, semester: event.target.value })}
+                        className="mt-2 w-full rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-[#90c639] focus:outline-none focus:ring-2 focus:ring-[#90c639]/20"
+                        placeholder="e.g., 1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={onEditSave}
+                      disabled={isSaving}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#90c639] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#7ab332] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Save changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onEditCancel}
+                      className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
+              ) : (
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#f4fbe8] text-[#365316]">
+                        <FileText className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">{note.name}</h3>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {note.subject && (
+                            <span className="inline-flex items-center rounded-full bg-[#f4fbe8] px-3 py-1 text-xs font-semibold text-[#365316]">
+                              {note.subject}
+                            </span>
+                          )}
+                          {(note.teacher || note.module) && (
+                            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                              {note.teacher || note.module}
+                            </span>
+                          )}
+                          {note.semester && (
+                            <span className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                              Semester {note.semester}
+                            </span>
+                          )}
+                        </div>
 
-                <div className="flex flex-col gap-2 lg:items-end">
-                  <button
-                    type="button"
-                    onClick={() => onEditStart(note)}
-                    className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingDelete(note)}
-                    disabled={isDeleting}
-                    className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Delete
-                  </button>
+                        <div className="mt-4 flex flex-wrap items-center gap-4 text-xs font-medium text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            Uploaded {formatDisplayDate(note.uploadedAt)}
+                          </span>
+                          {note.updatedAt && note.updatedAt !== note.uploadedAt && (
+                            <span className="flex items-center gap-1">
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edited {formatDisplayDate(note.updatedAt)}
+                            </span>
+                          )}
+                          <span>{formatFileSize(note.fileSize)}</span>
+                        </div>
+
+                        {(note.contributorDisplayName || note.contributorName) && (
+                          <p className="mt-3 text-sm text-gray-600">
+                            Shared as{' '}
+                            <span className="font-semibold text-gray-800">
+                              {note.contributorDisplayName || note.contributorName}
+                            </span>
+                          </p>
+                        )}
+
+                        {note.fileUrl && (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                              type="button"
+                              onClick={() => onView(note.fileUrl)}
+                              className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                            >
+                              <Eye className="h-4 w-4" />
+                              View
+                            </button>
+                            <PWADownloadButton
+                              url={note.fileUrl}
+                              title={note.subject}
+                              className="rounded-full"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 lg:items-end">
+                    <button
+                      type="button"
+                      onClick={() => onEditStart(note)}
+                      className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(note)}
+                      disabled={isDeleting}
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Delete
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </article>
-        )
-      })}
-    </section>
+              )}
+            </article>
+          )
+        })}
+      </section>
 
-    {pendingDelete && (
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" role="dialog" aria-modal="true">
-        <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-rose-200 bg-white p-5 sm:p-6 shadow-lg">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Delete this note?</h3>
-            <p className="mt-2 text-sm text-gray-600">This will remove the note from the shared library. This action cannot be undone.</p>
-          </div>
-          <div className="mb-4 rounded-xl bg-[#fff7f7] p-4 text-sm text-rose-700">
-            <div className="font-semibold">{pendingDelete.name}</div>
-            <div className="mt-1 text-gray-700">{pendingDelete.subject} {pendingDelete.teacher ? `• ${pendingDelete.teacher}` : ''}</div>
-          </div>
-          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setPendingDelete(null)}
-              className="inline-flex items-center justify-center rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const id = pendingDelete.id
-                setPendingDelete(null)
-                onDelete(id)
-              }}
-              className="inline-flex items-center justify-center rounded-full bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700"
-            >
-              Delete
-            </button>
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" role="dialog" aria-modal="true">
+          <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-rose-200 bg-white p-5 sm:p-6 shadow-lg">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Delete this note?</h3>
+              <p className="mt-2 text-sm text-gray-600">This will remove the note from the shared library. This action cannot be undone.</p>
+            </div>
+            <div className="mb-4 rounded-xl bg-[#fff7f7] p-4 text-sm text-rose-700">
+              <div className="font-semibold">{pendingDelete.name}</div>
+              <div className="mt-1 text-gray-700">{pendingDelete.subject} {pendingDelete.teacher ? `• ${pendingDelete.teacher}` : ''}</div>
+            </div>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="inline-flex items-center justify-center rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = pendingDelete.id
+                  setPendingDelete(null)
+                  onDelete(id)
+                }}
+                className="inline-flex items-center justify-center rounded-full bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
     </>
   )
 }

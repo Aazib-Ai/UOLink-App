@@ -6,13 +6,13 @@ import {
   orderBy,
   query,
   where,
-  limit,
 } from 'firebase/firestore'
 import { FirebaseError } from 'firebase/app'
 import { db } from '@/lib/firebase'
 import { updateNote, deleteNote } from '@/lib/api/notes'
 import { toTitleCase } from '@/lib/utils'
 import { UserNote } from '@/types/contributions'
+import { cachedFetch, dataCache } from '@/lib/firebase/batch-operations'
 
 export interface ContributionsServiceResponse<T> {
   data: T | null
@@ -21,6 +21,18 @@ export interface ContributionsServiceResponse<T> {
 }
 
 class ContributionsService {
+  private CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+  private getCacheKey(uid: string): string {
+    return `user_contributions:${uid}`
+  }
+
+  // Invalidate cache when user uploads or deletes a note
+  invalidateCache(uid: string): void {
+    dataCache.clear()
+    console.log(`[ContributionsService] Cache invalidated for user: ${uid}`)
+  }
+
   private normalizeValue = (value: string) =>
     value
       .toLowerCase()
@@ -43,119 +55,26 @@ class ContributionsService {
     return new Date().toISOString()
   }
 
-  async loadUserContributions(uid: string, displayName?: string, email?: string, username?: string): Promise<ContributionsServiceResponse<UserNote[]>> {
+  async loadUserContributions(
+    uid: string,
+    displayName?: string,
+    email?: string,
+    username?: string
+  ): Promise<ContributionsServiceResponse<UserNote[]>> {
+    const cacheKey = this.getCacheKey(uid)
+
+    // Use cached fetch wrapper for 5-minute caching
     try {
-      const notesRef = collection(db, 'notes')
-
-      // Build all constraint sets for different possible user identifiers
-      const constraintSets: Array<{ label: string; constraints: any[] }> = [
-        {
-          label: 'uploadedBy',
-          constraints: [where('uploadedBy', '==', uid)],
+      const data = await cachedFetch(
+        cacheKey,
+        async () => {
+          return this.fetchUserContributions(uid, displayName, email, username)
         },
-      ]
-
-      if (email) {
-        const emailLower = email.toLowerCase()
-        constraintSets.push({
-          label: `metadata.createdBy:${emailLower}`,
-          constraints: [where('metadata.createdBy', '==', emailLower)],
-        })
-        constraintSets.push({
-          label: `metadata.createdBy:${email}`,
-          constraints: [where('metadata.createdBy', '==', email)],
-        })
-      }
-
-      const contributorCandidates = new Set<string>()
-
-      // Add username as primary identifier for contributor name matching
-      if (username) {
-        const trimmedUsername = username.trim()
-        if (trimmedUsername) {
-          contributorCandidates.add(trimmedUsername)
-        }
-      }
-
-      // Add display name variations for backward compatibility
-      if (displayName) {
-        const trimmed = displayName.trim()
-        if (trimmed) {
-          contributorCandidates.add(trimmed)
-          contributorCandidates.add(toTitleCase(trimmed))
-        }
-      }
-
-      // Add email-based identifier for legacy compatibility
-      if (email) {
-        contributorCandidates.add(email.split('@')[0])
-      }
-
-      contributorCandidates.forEach((candidate) => {
-        const value = candidate.trim()
-        if (value) {
-          constraintSets.push({
-            label: `contributorName:${value}`,
-            constraints: [where('contributorName', '==', value)],
-          })
-        }
-      })
-
-      const results = new Map<string, UserNote>()
-
-      // Helper function for running queries with fallback
-      const runQueryWithFallback = async (constraints: any[]) => {
-        try {
-          return await getDocs(query(notesRef, ...constraints, orderBy('uploadedAt', 'desc')))
-        } catch (err) {
-          if (err instanceof FirebaseError && err.code === 'failed-precondition') {
-            return await getDocs(query(notesRef, ...constraints))
-          }
-          throw err
-        }
-      }
-
-      // Execute queries in parallel for better performance
-      const queryPromises = constraintSets.map(async (attempt) => {
-        try {
-          const snapshot = await runQueryWithFallback(attempt.constraints)
-          snapshot.docs.forEach((docSnap) => {
-            if (results.has(docSnap.id)) return
-
-            const data = docSnap.data() as Record<string, unknown>
-            const uploadedAtRaw = data.uploadedAt
-            const updatedAtRaw = data.updatedAt
-
-            results.set(docSnap.id, {
-              id: docSnap.id,
-              name: typeof data.name === 'string' ? data.name : 'Untitled note',
-              subject: typeof data.subject === 'string' ? data.subject : '',
-              teacher: typeof data.teacher === 'string' ? data.teacher : typeof data.module === 'string' ? data.module : '',
-              module: typeof data.module === 'string' ? data.module : undefined,
-              semester: typeof data.semester === 'string' ? data.semester : '',
-              contributorName: typeof data.contributorName === 'string' ? data.contributorName : '',
-              contributorDisplayName: typeof data.contributorDisplayName === 'string'
-                ? data.contributorDisplayName
-                : typeof data.contributorName === 'string'
-                ? data.contributorName
-                : '',
-              uploaderUsername: typeof data.uploaderUsername === 'string' ? data.uploaderUsername : null,
-              fileUrl: typeof data.fileUrl === 'string' ? data.fileUrl : '',
-              fileSize: typeof data.fileSize === 'number' ? data.fileSize : undefined,
-              uploadedAt: this.getTimestampString(uploadedAtRaw),
-              updatedAt: updatedAtRaw ? this.getTimestampString(updatedAtRaw) : undefined,
-            })
-          })
-        } catch (attemptError) {
-          console.error(`[ContributionsService] Failed to load notes using ${attempt.label}:`, attemptError)
-        }
-      })
-
-      // Wait for all queries to complete
-      await Promise.allSettled(queryPromises)
+        this.CACHE_TTL
+      )
 
       return {
-        data: Array.from(results.values()),
+        data,
         error: null,
         success: true,
       }
@@ -167,6 +86,124 @@ class ContributionsService {
         success: false,
       }
     }
+  }
+
+  private async fetchUserContributions(
+    uid: string,
+    displayName?: string,
+    email?: string,
+    username?: string
+  ): Promise<UserNote[]> {
+    const notesRef = collection(db, 'notes')
+
+    // Build all constraint sets for different possible user identifiers
+    const constraintSets: Array<{ label: string; constraints: any[] }> = [
+      {
+        label: 'uploadedBy',
+        constraints: [where('uploadedBy', '==', uid)],
+      },
+    ]
+
+    if (email) {
+      const emailLower = email.toLowerCase()
+      constraintSets.push({
+        label: `metadata.createdBy:${emailLower}`,
+        constraints: [where('metadata.createdBy', '==', emailLower)],
+      })
+      constraintSets.push({
+        label: `metadata.createdBy:${email}`,
+        constraints: [where('metadata.createdBy', '==', email)],
+      })
+    }
+
+    const contributorCandidates = new Set<string>()
+
+    // Add username as primary identifier for contributor name matching
+    if (username) {
+      const trimmedUsername = username.trim()
+      if (trimmedUsername) {
+        contributorCandidates.add(trimmedUsername)
+      }
+    }
+
+    // Add display name variations for backward compatibility
+    if (displayName) {
+      const trimmed = displayName.trim()
+      if (trimmed) {
+        contributorCandidates.add(trimmed)
+        contributorCandidates.add(toTitleCase(trimmed))
+      }
+    }
+
+    // Add email-based identifier for legacy compatibility
+    if (email) {
+      contributorCandidates.add(email.split('@')[0])
+    }
+
+    contributorCandidates.forEach((candidate) => {
+      const value = candidate.trim()
+      if (value) {
+        constraintSets.push({
+          label: `contributorName:${value}`,
+          constraints: [where('contributorName', '==', value)],
+        })
+      }
+    })
+
+    const results = new Map<string, UserNote>()
+
+    // Helper function for running queries with fallback
+    const runQueryWithFallback = async (constraints: any[]) => {
+      try {
+        return await getDocs(query(notesRef, ...constraints, orderBy('uploadedAt', 'desc')))
+      } catch (err) {
+        if (err instanceof FirebaseError && err.code === 'failed-precondition') {
+          return await getDocs(query(notesRef, ...constraints))
+        }
+        throw err
+      }
+    }
+
+    // Execute queries in parallel for better performance
+    const queryPromises = constraintSets.map(async (attempt) => {
+      try {
+        const snapshot = await runQueryWithFallback(attempt.constraints)
+        snapshot.docs.forEach((docSnap) => {
+          if (results.has(docSnap.id)) return
+
+          const data = docSnap.data() as Record<string, unknown>
+          const uploadedAtRaw = data.uploadedAt
+          const updatedAtRaw = data.updatedAt
+
+          results.set(docSnap.id, {
+            id: docSnap.id,
+            name: typeof data.name === 'string' ? data.name : 'Untitled note',
+            subject: typeof data.subject === 'string' ? data.subject : '',
+            teacher: typeof data.teacher === 'string' ? data.teacher : typeof data.module === 'string' ? data.module : '',
+            module: typeof data.module === 'string' ? data.module : undefined,
+            semester: typeof data.semester === 'string' ? data.semester : '',
+            contributorName: typeof data.contributorName === 'string' ? data.contributorName : '',
+            contributorDisplayName: typeof data.contributorDisplayName === 'string'
+              ? data.contributorDisplayName
+              : typeof data.contributorName === 'string'
+                ? data.contributorName
+                : '',
+            uploaderUsername: typeof data.uploaderUsername === 'string' ? data.uploaderUsername : null,
+            fileUrl: typeof data.fileUrl === 'string' ? data.fileUrl : '',
+            fileSize: typeof data.fileSize === 'number' ? data.fileSize : undefined,
+            uploadedAt: this.getTimestampString(uploadedAtRaw),
+            updatedAt: updatedAtRaw ? this.getTimestampString(updatedAtRaw) : undefined,
+          })
+        })
+      } catch (attemptError) {
+        console.error(`[ContributionsService] Failed to load notes using ${attempt.label}:`, attemptError)
+      }
+    })
+
+    // Wait for all queries to complete
+    await Promise.allSettled(queryPromises)
+
+    return Array.from(results.values())
   }
 
   async updateContribution(

@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUpload } from '@/contexts/UploadContext'
 import { ContributionsProvider, useContributions } from '@/contexts/ContributionsContext'
 import { UploadProvider } from '@/contexts/UploadContext'
 import { useContributionsData } from '@/hooks/contributions'
+import { contributionsService } from '@/services/contributionsService'
 import {
   ContributionsLayout,
   ContributionStatsPanel,
@@ -47,6 +48,9 @@ function ContributionsPageContent() {
   } = useContributions()
 
   const {
+    // Data loading
+    loadUserContributions,
+
     // Actions
     startEditing,
     saveNote,
@@ -58,6 +62,8 @@ function ContributionsPageContent() {
     setSortBy,
     clearFilters,
   } = useContributionsData()
+
+  const { openUploadModal } = useUpload()
 
   // Auth redirect
   useEffect(() => {
@@ -90,8 +96,6 @@ function ContributionsPageContent() {
     }
   }
 
-  const { openUploadModal } = useUpload()
-
   const handleEmptyStateAction = () => {
     if (!hasAnyNotes) {
       openUploadModal()
@@ -100,11 +104,13 @@ function ContributionsPageContent() {
     }
   }
 
-  const handleUploadSuccess = () => {
-    // Refresh notes after successful upload
-    const { loadUserContributions } = useContributionsData()
-    loadUserContributions()
-  }
+  // Handle upload success - invalidate cache and refresh
+  const handleUploadComplete = useCallback(() => {
+    if (user?.uid) {
+      contributionsService.invalidateCache(user.uid)
+      loadUserContributions()
+    }
+  }, [user?.uid, loadUserContributions])
 
   if (loading || isLoading) {
     return (
@@ -240,7 +246,7 @@ export default function ContributionsPage() {
   return (
     <ContributionsProvider>
       <UploadProvider onUploadSuccess={() => {
-        // This will be handled by the page component
+        // Upload success is now handled within ContributionsPageContent via handleUploadComplete
         console.log('Upload completed at provider level')
       }}>
         <ContributionsPageContent />

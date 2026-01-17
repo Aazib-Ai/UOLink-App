@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useContributions } from '@/contexts/ContributionsContext'
 import { contributionsService } from '@/services/contributionsService'
@@ -13,6 +13,9 @@ export type { UserNote, ActivityStats, NoteActionState } from '@/types/contribut
 
 export function useContributionsData() {
   const { user } = useAuth()
+  // Use refs to stabilize user data and prevent refetches
+  const hasLoadedRef = useRef(false)
+  const userRef = useRef({ uid: user?.uid, displayName: user?.displayName, email: user?.email })
   const {
     // Data
     userNotes,
@@ -49,7 +52,8 @@ export function useContributionsData() {
 
   // Load user contributions
   const loadUserContributions = useCallback(async () => {
-    if (!user?.uid) return
+    const uid = userRef.current.uid || user?.uid
+    if (!uid) return
 
     setLoading(true)
     setError(null)
@@ -58,16 +62,16 @@ export function useContributionsData() {
       // Get user's profile to access username for better contribution matching
       let userUsername: string | undefined
       try {
-        const userProfile = await getUserProfile(user.uid)
+        const userProfile = await getUserProfile(uid)
         userUsername = userProfile?.username
       } catch (profileError) {
         console.warn('[useContributionsData] Could not load user profile for username:', profileError)
       }
 
       const response = await contributionsService.loadUserContributions(
-        user.uid,
-        user.displayName || undefined,
-        user.email || undefined,
+        uid,
+        userRef.current.displayName || user?.displayName || undefined,
+        userRef.current.email || user?.email || undefined,
         userUsername
       )
 
@@ -293,12 +297,17 @@ export function useContributionsData() {
     }
   }, [userNotes, setError, setNoteActionState, setUserNotes])
 
-  // Effects
+  // Effects - load once on mount when user is available
   useEffect(() => {
-    if (user?.uid) {
+    // Update ref with latest user data
+    userRef.current = { uid: user?.uid, displayName: user?.displayName, email: user?.email }
+
+    // Only load once per mount
+    if (user?.uid && !hasLoadedRef.current) {
+      hasLoadedRef.current = true
       loadUserContributions()
     }
-  }, [user?.uid, loadUserContributions])
+  }, [user?.uid, user?.displayName, user?.email, loadUserContributions])
 
   useEffect(() => {
     loadUserProfileName()
